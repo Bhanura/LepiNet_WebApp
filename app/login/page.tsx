@@ -29,23 +29,22 @@ export default function LoginPage() {
     }
     
     if (data.user) {
-      // Fetch user role from database
+      // Fetch user role and verification status from database
       const { data: userData } = await supabase
         .from('users')
-        .select('role')
+        .select('role, verification_status')
         .eq('id', data.user.id)
         .single();
 
       // Small delay to ensure auth state is updated
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Redirect based on role
+      // Redirect based on role - Super admins go to separate dashboard
       if (userData?.role === 'admin') {
         router.push('/admin/dashboard');
-      } else if (userData?.role === 'expert') {
-        router.push('/review');
       } else {
-        router.push('/');
+        // Users and experts go to the same dashboard
+        router.push('/dashboard');
       }
       
       // Don't reset loading state - let the redirect happen
