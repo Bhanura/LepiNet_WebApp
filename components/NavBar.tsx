@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import Image from 'next/image'; // Import Image component
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, usePathname } from 'next/navigation';
@@ -10,7 +11,6 @@ export default function NavBar() {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Hide Navbar on Login page
   if (pathname === '/login') return null;
 
   const supabase = createBrowserClient(
@@ -24,7 +24,6 @@ export default function NavBar() {
       setUser(user);
 
       if (user) {
-        // Fetch the Role from the 'users' table
         const { data } = await supabase
           .from('users')
           .select('role')
@@ -52,7 +51,15 @@ export default function NavBar() {
           
           {/* Logo & Home Link */}
           <div className="flex items-center">
-            <Link href="/" className="flex items-center gap-2">
+            <Link href="/" className="flex items-center gap-3">
+              {/* Added Logo Here */}
+              <Image 
+                src="/logo.png" 
+                alt="LepiNet Logo" 
+                width={40} 
+                height={40} 
+                className="w-10 h-10 object-contain"
+              />
               <span className="text-2xl font-bold text-[#134a86]">LepiNet</span>
             </Link>
           </div>
@@ -61,21 +68,16 @@ export default function NavBar() {
           <div className="flex items-center gap-6">
             {user ? (
               <>
-                {/* Admin Only Link */}
                 {role === 'admin' && (
                   <Link href="/admin/dashboard" className="text-gray-600 hover:text-[#134a86] font-medium text-sm">
                     Admin Dashboard
                   </Link>
                 )}
-
-                {/* Regular User Only Link (Not for Experts/Admins) */}
                 {role === 'user' && (
                   <Link href="/expert-application" className="text-gray-600 hover:text-[#134a86] font-medium text-sm">
                     Become an Expert
                   </Link>
                 )}
-
-                {/* Expert Only Link (We will build this page next) */}
                 {role === 'expert' && (
                   <Link href="/review" className="text-gray-600 hover:text-[#134a86] font-medium text-sm">
                     Review Queue

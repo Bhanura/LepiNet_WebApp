@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Image from 'next/image'; // Import Image
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 
@@ -18,28 +19,32 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       alert(error.message);
       setLoading(false);
     } else {
-      // If login successful, check role to decide where to go
-      const { data: { user } } = await supabase.auth.getUser();
-      // We need to fetch the profile to see the role, but for now just go to home
-      // You can manually navigate to /admin/dashboard later
       router.push('/'); 
       router.refresh();
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-100">
-      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-md">
-        <h1 className="text-2xl font-bold text-center text-[#134a86]">LepiNet Web Login</h1>
+    <div className="flex min-h-screen items-center justify-center bg-gray-50">
+      <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-lg border border-gray-100">
+        <div className="flex flex-col items-center text-center">
+          {/* Added Logo Here */}
+          <Image 
+            src="/logo.png" 
+            alt="LepiNet Logo" 
+            width={80} 
+            height={80} 
+            className="mb-4"
+          />
+          <h1 className="text-3xl font-bold text-[#134a86]">LepiNet</h1>
+          <p className="text-gray-500 mt-2">Sign in to your account</p>
+        </div>
         
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
@@ -47,34 +52,28 @@ export default function LoginPage() {
             <input 
               type="email" 
               required
-              className="w-full p-2 border border-gray-300 rounded mt-1"
+              className="w-full p-3 border border-gray-300 rounded-lg mt-1 focus:ring-2 focus:ring-[#134a86] outline-none"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
-          
           <div>
             <label className="block text-sm font-medium text-gray-700">Password</label>
             <input 
               type="password" 
               required
-              className="w-full p-2 border border-gray-300 rounded mt-1"
+              className="w-full p-3 border border-gray-300 rounded-lg mt-1 focus:ring-2 focus:ring-[#134a86] outline-none"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-
           <button 
             disabled={loading}
-            className="w-full py-3 bg-[#134a86] text-white rounded font-bold hover:bg-blue-800 transition"
+            className="w-full py-3 bg-[#134a86] text-white rounded-lg font-bold hover:bg-blue-900 transition shadow-md"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-        
-        <p className="text-xs text-center text-gray-500">
-          Use the same email/password you used in the mobile app.
-        </p>
       </div>
     </div>
   );
