@@ -9,9 +9,10 @@ import ProtectedImage from '@/components/ProtectedImage';
 type LogEntry = {
   id: string;
   image_url: string;
-  predicted_species_name: string;
+  predicted_id: string;
   predicted_confidence: number;
   user_action: string;
+  final_species_name: string | null;
   created_at: string;
 };
 
@@ -51,7 +52,7 @@ export default function ReviewQueue() {
     // 2. Fetch Logs based on filter
     let query = supabase
       .from('ai_logs')
-      .select('id, image_url, predicted_species_name, predicted_confidence, user_action, created_at')
+      .select('id, image_url, predicted_id, predicted_confidence, user_action, final_species_name, created_at')
       .order('created_at', { ascending: false });
 
     if (filter !== 'ALL') {
@@ -60,8 +61,12 @@ export default function ReviewQueue() {
 
     const { data, error } = await query;
 
-    if (error) console.error(error);
-    else setLogs(data || []);
+    if (error) {
+      console.error('Error fetching queue:', error.message || error);
+      setLogs([]);
+    } else {
+      setLogs(data || []);
+    }
     
     setLoading(false);
   };
@@ -99,7 +104,7 @@ export default function ReviewQueue() {
                   {/* Using the Protected Image Component we made earlier */}
                   <ProtectedImage 
                     src={log.image_url} 
-                    alt={log.predicted_species_name || "Butterfly"} 
+                    alt={log.final_species_name || log.predicted_id || "Butterfly"} 
                     authorName="LepiNet User" 
                   />
                 </div>
@@ -107,7 +112,7 @@ export default function ReviewQueue() {
                 <div className="p-5">
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="font-bold text-lg text-gray-800">
-                      {log.predicted_species_name || "Unknown Species"}
+                      {log.final_species_name || log.predicted_id || "Unknown Species"}
                     </h3>
                     <span className={`text-xs px-2 py-1 rounded-full font-bold ${
                       log.user_action === 'ACCEPTED' ? 'bg-green-100 text-green-800' :
