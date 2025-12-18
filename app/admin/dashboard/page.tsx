@@ -44,18 +44,25 @@ export default function AdminDashboard() {
 
   const fetchData = async () => {
     // 1. Verify Admin
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return router.push('/login');
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      setLoading(false);
+      router.push('/login');
+      return;
+    }
 
-    const { data: currentUser } = await supabase
+    const { data: currentUser, error: dbError } = await supabase
       .from('users')
       .select('role')
       .eq('id', user.id)
       .single();
 
-    if (currentUser?.role !== 'admin') {
-      alert("Unauthorized");
-      return router.push('/');
+    if (dbError || currentUser?.role !== 'admin') {
+      setLoading(false);
+      alert("Unauthorized - Admin access required");
+      router.push('/');
+      return;
     }
 
     // 2. Fetch Stats (Parallel Requests)
@@ -102,8 +109,9 @@ export default function AdminDashboard() {
 
   const handleBanUser = async (userId: string, isBanned: boolean) => {
     if (!confirm(`Are you sure you want to ${isBanned ? 'BAN' : 'UNBAN'} this user?`)) return;
-    // We use verification_status 'banned' as a simple flag
-    await updateUser(userId, { verification_status: isBanned ? 'banned' : 'verified' });
+    
+    const status = isBanned ? 'banned' : 'none';
+    await updateUser(userId, { verification_status: status });
   };
 
   const updateUser = async (userId: string, updates: any) => {
@@ -212,8 +220,8 @@ export default function AdminDashboard() {
                       </td>
                       <td className="p-4">
                         <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                          u.verification_status === 'verified' ? 'bg-green-100 text-green-800' :
                           u.verification_status === 'banned' ? 'bg-red-100 text-red-800' :
+                          u.verification_status === 'verified' ? 'bg-green-100 text-green-800' :
                           'bg-gray-100 text-gray-800'
                         }`}>
                           {u.verification_status || 'active'}

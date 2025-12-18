@@ -11,8 +11,6 @@ export default function NavBar() {
   const router = useRouter();
   const pathname = usePathname();
 
-  if (pathname === '/login') return null;
-
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -33,14 +31,40 @@ export default function NavBar() {
         if (data) setRole(data.role);
       }
     };
+    
     getUser();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        // Fetch role when auth state changes
+        supabase
+          .from('users')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            if (data) setRole(data.role);
+          });
+      } else {
+        setUser(null);
+        setRole('user');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
+
+  if (pathname === '/login') return null;
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setUser(null);
     setRole('user');
-    router.push('/login');
+    router.push('/');
     router.refresh();
   };
 

@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import Link from 'next/link';
 import Image from 'next/image'; // Import Image
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
@@ -19,14 +20,35 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       alert(error.message);
       setLoading(false);
-    } else {
-      router.push('/'); 
-      router.refresh();
+      return;
+    }
+    
+    if (data.user) {
+      // Fetch user role from database
+      const { data: userData } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+
+      // Small delay to ensure auth state is updated
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Redirect based on role
+      if (userData?.role === 'admin') {
+        router.push('/admin/dashboard');
+      } else if (userData?.role === 'expert') {
+        router.push('/review');
+      } else {
+        router.push('/');
+      }
+      
+      // Don't reset loading state - let the redirect happen
     }
   };
 
@@ -35,13 +57,15 @@ export default function LoginPage() {
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-xl shadow-lg border border-gray-100">
         <div className="flex flex-col items-center text-center">
           {/* Added Logo Here */}
-          <Image 
-            src="/logo.png" 
-            alt="LepiNet Logo" 
-            width={80} 
-            height={80} 
-            className="mb-4"
-          />
+          <Link href="/">
+            <Image 
+              src="/logo.png" 
+              alt="LepiNet Logo" 
+              width={80} 
+              height={80} 
+              className="mb-4 cursor-pointer hover:opacity-80 transition"
+            />
+          </Link>
           <h1 className="text-3xl font-bold text-[#134a86]">LepiNet</h1>
           <p className="text-gray-500 mt-2">Sign in to your account</p>
         </div>
@@ -74,6 +98,12 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+        
+        <div className="text-center">
+          <Link href="/" className="text-sm text-gray-600 hover:text-[#134a86] transition">
+            ← Back to Home
+          </Link>
+        </div>
       </div>
     </div>
   );
