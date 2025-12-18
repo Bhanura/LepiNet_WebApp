@@ -99,8 +99,14 @@ export default function LoginPage() {
           </button>
         </form>
         
-        <div className="text-center">
-          <Link href="/" className="text-sm text-gray-600 hover:text-[#134a86] transition">
+        <div className="text-center space-y-3">
+          <p className="text-sm text-gray-600">
+            Don't have an account?{' '}
+            <Link href="/signup" className="text-[#134a86] font-medium hover:underline">
+              Sign Up
+            </Link>
+          </p>
+          <Link href="/" className="block text-sm text-gray-600 hover:text-[#134a86] transition">
             ← Back to Home
           </Link>
         </div>

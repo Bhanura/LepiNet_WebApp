@@ -117,7 +117,7 @@ export default function NavBar() {
                   Sign Out
                 </button>
               </>
-            ) : (
+            ) : pathname !== '/' && (
               <Link 
                 href="/login" 
                 className="bg-[#134a86] text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-900 transition text-sm"
