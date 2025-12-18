@@ -90,8 +90,18 @@ export default function NavBar() {
 
           {/* Right Side Links */}
           <div className="flex items-center gap-6">
+        
+            <Link href="/records" className="text-gray-600 hover:text-[#134a86] font-medium text-sm">
+               📚 Records
+            </Link>
+
             {user ? (
               <>
+                {/* Dashboard Link (For Everyone) */}
+                <Link href="/dashboard" className="text-gray-600 hover:text-[#134a86] font-medium text-sm">
+                   My Dashboard
+                </Link>
+
                 {role === 'admin' && (
                   <Link href="/admin/dashboard" className="text-gray-600 hover:text-[#134a86] font-medium text-sm">
                     Admin Dashboard
