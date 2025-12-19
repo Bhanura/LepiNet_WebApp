@@ -49,17 +49,30 @@ export default function RecordsGallery() {
       .order('created_at', { ascending: false });
 
     if (allRecords) {
-      // Fetch review counts for each record
+      // Fetch review counts and species details for each record
       const recordsWithStats = await Promise.all(
         allRecords.map(async (record) => {
+          // Get review count
           const { count } = await supabase
             .from('expert_reviews')
             .select('*', { count: 'exact', head: true })
             .eq('ai_log_id', record.id);
 
+          // Get species details if predicted_id exists
+          let speciesDetails = null;
+          if (record.predicted_id) {
+            const { data: species } = await supabase
+              .from('species')
+              .select('common_name_english, species_name_binomial, family')
+              .eq('butterfly_id', record.predicted_id)
+              .single();
+            speciesDetails = species;
+          }
+
           return {
             ...record,
             review_count: count || 0,
+            species_details: speciesDetails,
           };
         })
       );
@@ -262,8 +275,13 @@ export default function RecordsGallery() {
                   {/* Card Content */}
                   <div className="p-4">
                     <h3 className="font-bold text-lg text-gray-800 group-hover:text-[#134a86] transition truncate">
-                      {record.final_species_name || record.predicted_species_name || 'Unknown Species'}
+                      {record.species_details?.common_name_english || record.final_species_name || record.predicted_species_name || 'Unknown Species'}
                     </h3>
+                    {record.species_details && (
+                      <p className="text-sm italic text-gray-600 mt-1 truncate">
+                        {record.species_details.species_name_binomial}
+                      </p>
+                    )}
                     
                     <div className="flex justify-between items-center mt-3">
                       <span className="text-xs text-gray-500">

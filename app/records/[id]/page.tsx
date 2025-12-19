@@ -8,6 +8,7 @@ import ProtectedImage from '@/components/ProtectedImage';
 export default function RecordDetail() {
   const { id } = useParams();
   const [record, setRecord] = useState<any>(null);
+  const [predictedSpecies, setPredictedSpecies] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -36,6 +37,16 @@ export default function RecordDetail() {
       // 1. Fetch Record
       const { data: rec } = await supabase.from('ai_logs').select('*').eq('id', id).single();
       setRecord(rec);
+
+      // 1.5 Fetch predicted species details
+      if (rec?.predicted_id) {
+        const { data: species } = await supabase
+          .from('species')
+          .select('*')
+          .eq('butterfly_id', rec.predicted_id)
+          .single();
+        setPredictedSpecies(species);
+      }
 
       // 2. Fetch Reviews + Ratings Count
       // Note: In a real production app, we'd use a SQL View or Join for ratings. 
@@ -98,21 +109,55 @@ export default function RecordDetail() {
           </div>
           
           <div className="bg-white p-6 rounded-xl shadow-sm">
-            <h2 className="text-xl font-bold mb-2">Metadata</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-               <div>
-                 <p className="text-gray-500">AI Prediction</p>
-                 <p className="font-semibold">{record.predicted_species_name}</p>
-               </div>
-               <div>
-                 <p className="text-gray-500">Confidence</p>
-                 <p className="font-semibold">{Math.round(record.predicted_confidence * 100)}%</p>
-               </div>
-               <div>
-                 <p className="text-gray-500">Date</p>
-                 <p className="font-semibold">{new Date(record.created_at).toLocaleDateString()}</p>
-               </div>
-            </div>
+            <h2 className="text-xl font-bold mb-4">AI Prediction Details</h2>
+            {predictedSpecies ? (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-gray-500 text-sm">Common Name</p>
+                  <p className="font-bold text-lg text-gray-800">{predictedSpecies.common_name_english}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 text-sm">Scientific Name</p>
+                  <p className="font-semibold italic text-gray-700">{predictedSpecies.species_name_binomial}</p>
+                  {predictedSpecies.species_name_trinomial && (
+                    <p className="text-sm italic text-gray-600">{predictedSpecies.species_name_trinomial}</p>
+                  )}
+                </div>
+                <div>
+                  <p className="text-gray-500 text-sm">Family</p>
+                  <p className="font-semibold text-gray-700">{predictedSpecies.family}</p>
+                </div>
+                {predictedSpecies.common_name_sinhalese && (
+                  <div>
+                    <p className="text-gray-500 text-sm">Sinhala Name</p>
+                    <p className="font-semibold text-gray-700">{predictedSpecies.common_name_sinhalese}</p>
+                  </div>
+                )}
+                <div className="pt-3 border-t border-gray-200">
+                  <p className="text-gray-500 text-sm">AI Confidence</p>
+                  <p className="font-bold text-blue-600">{Math.round(record.predicted_confidence * 100)}%</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 text-sm">Date Uploaded</p>
+                  <p className="font-semibold text-gray-700">{new Date(record.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <p className="text-gray-500 text-sm">AI Prediction</p>
+                  <p className="font-semibold">{record.predicted_species_name || 'Unknown'}</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 text-sm">Confidence</p>
+                  <p className="font-semibold">{Math.round(record.predicted_confidence * 100)}%</p>
+                </div>
+                <div>
+                  <p className="text-gray-500 text-sm">Date</p>
+                  <p className="font-semibold">{new Date(record.created_at).toLocaleDateString()}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

@@ -18,11 +18,12 @@ export default function ReviewDetail() {
   const [submitting, setSubmitting] = useState(false);
 
   // Form State
-  const [verdict, setVerdict] = useState<'AGREE' | 'CORRECT' | 'UNSURE'>('AGREE');
+  const [verdict, setVerdict] = useState<'AGREE' | 'CORRECT' | 'UNSURE' | 'NOT_BUTTERFLY'>('AGREE');
   const [correctSpecies, setCorrectSpecies] = useState('');
   const [isDiscovery, setIsDiscovery] = useState(false);
   const [comments, setComments] = useState('');
-
+  const [speciesSearch, setSpeciesSearch] = useState('');
+  const [searchFilter, setSearchFilter] = useState<'all' | 'common' | 'scientific'>('all');
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -84,9 +85,35 @@ export default function ReviewDetail() {
 
     if (!user) return alert("Error: Not logged in");
 
-    // Logic: If they agree, the identified name is the AI's name.
+    // Handle "Not a butterfly" case
+    if (verdict === 'NOT_BUTTERFLY') {
+      const { error } = await supabase
+        .from('expert_reviews')
+        .insert({
+          ai_log_id: id,
+          reviewer_id: user.id,
+          agreed_with_ai: false,
+          identified_species_name: 'Not a Butterfly',
+          confidence_level: 'certain',
+          is_new_discovery: false,
+          comments: comments || 'This is not a butterfly'
+        });
+
+      if (error) {
+        alert("Submission Failed: " + error.message);
+        setSubmitting(false);
+      } else {
+        alert("Review Submitted Successfully!");
+        router.push('/records');
+      }
+      return;
+    }
+
+    // Logic: If they agree, the identified name is from species details
     // If they correct it, it's the dropdown value.
-    const finalName = verdict === 'AGREE' ? log.predicted_species_name : correctSpecies;
+    const finalName = verdict === 'AGREE' 
+      ? (predictedSpecies?.common_name_english || log.predicted_species_name)
+      : correctSpecies;
     const agreed = verdict === 'AGREE';
 
     const { error } = await supabase
@@ -106,138 +133,233 @@ export default function ReviewDetail() {
       setSubmitting(false);
     } else {
       alert("Review Submitted Successfully!");
-      router.push('/review'); // Go back to queue
+      router.push('/records');
     }
   };
+
+  // Filter species list based on search
+  const filteredSpeciesList = speciesList.filter(s => {
+    if (!speciesSearch) return true;
+    const search = speciesSearch.toLowerCase();
+    
+    if (searchFilter === 'common') {
+      return s.common_name_english?.toLowerCase().includes(search);
+    } else if (searchFilter === 'scientific') {
+      return s.species_name_binomial?.toLowerCase().includes(search) || 
+             s.species_name_trinomial?.toLowerCase().includes(search);
+    } else {
+      return s.common_name_english?.toLowerCase().includes(search) ||
+             s.species_name_binomial?.toLowerCase().includes(search) ||
+             s.species_name_trinomial?.toLowerCase().includes(search);
+    }
+  });
 
   if (loading || !log) return <div className="p-10 text-center">Loading Workstation...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 flex flex-col md:flex-row gap-6">
+    <div className="min-h-screen bg-gray-50 flex">
       
-      {/* LEFT: Image Viewer */}
-      <div className="flex-1 bg-black rounded-xl overflow-hidden flex items-center justify-center relative shadow-lg">
-        {/* We use standard img here for raw zoom capability, or ProtectedImage if you prefer safety over zoom */}
-        <div className="relative w-full h-[80vh]">
-           <ProtectedImage src={log.image_url} alt="Specimen" authorName="Contributor" />
-        </div>
-      </div>
-
-      {/* RIGHT: Analysis Panel */}
-      <div className="w-full md:w-[400px] bg-white rounded-xl shadow-lg border border-gray-200 p-6 flex flex-col h-[80vh] overflow-y-auto">
-        <h2 className="text-xl font-bold text-[#134a86] mb-4">Expert Analysis</h2>
-
-        {/* AI Metadata */}
-        <div className="bg-blue-50 p-4 rounded-lg mb-6 border-l-4 border-blue-600">
-          <p className="text-xs text-blue-600 uppercase font-bold mb-1">AI PREDICTION</p>
-          {predictedSpecies ? (
-            <>
-              <p className="text-lg font-bold text-gray-900">{predictedSpecies.common_name_english}</p>
-              <p className="text-sm italic text-gray-700">{predictedSpecies.species_name_binomial}</p>
-              {predictedSpecies.species_name_trinomial && (
-                <p className="text-xs italic text-gray-600">{predictedSpecies.species_name_trinomial}</p>
-              )}
-              <p className="text-xs text-gray-600 mt-1">Family: {predictedSpecies.family}</p>
-              {predictedSpecies.common_name_sinhalese && (
-                <p className="text-xs text-gray-600">Sinhala: {predictedSpecies.common_name_sinhalese}</p>
-              )}
-            </>
-          ) : (
-            <p className="text-lg font-bold text-gray-900">{log.predicted_species_name || 'Unknown Species'}</p>
-          )}
-          <p className="text-sm text-gray-600 mt-2">Confidence: {Math.round(log.predicted_confidence * 100)}%</p>
-          <div className="mt-2 pt-2 border-t border-blue-200">
-             <p className="text-xs text-gray-500">User Action: <span className="font-bold">{log.user_action}</span></p>
+      {/* LEFT PANEL: Image Viewer with AI Details - 50% */}
+      <div className="w-1/2 p-6 flex flex-col gap-6 overflow-y-auto" style={{ maxHeight: '100vh' }}>
+        {/* Image */}
+        <div className="bg-black rounded-xl overflow-hidden shadow-xl">
+          <div className="relative w-full" style={{ height: '55vh' }}>
+            <ProtectedImage src={log.image_url} alt="Specimen" authorName="Contributor" />
           </div>
         </div>
 
+        {/* AI Prediction Details */}
+        <div className="bg-blue-50 p-6 rounded-xl border-l-4 border-blue-600 shadow-lg">
+          <p className="text-xs text-blue-600 uppercase font-bold mb-3">AI PREDICTION DETAILS</p>
+          {predictedSpecies ? (
+            <div className="space-y-3">
+              <div>
+                <p className="text-gray-600 text-sm">Common Name</p>
+                <p className="text-2xl font-bold text-gray-900">{predictedSpecies.common_name_english}</p>
+              </div>
+              <div>
+                <p className="text-gray-600 text-sm">Scientific Name</p>
+                <p className="text-lg italic text-gray-800">{predictedSpecies.species_name_binomial}</p>
+                {predictedSpecies.species_name_trinomial && (
+                  <p className="text-sm italic text-gray-700">{predictedSpecies.species_name_trinomial}</p>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-4 pt-3 border-t border-blue-200">
+                <div>
+                  <p className="text-gray-600 text-sm">Family</p>
+                  <p className="font-semibold text-gray-800">{predictedSpecies.family}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600 text-sm">AI Confidence</p>
+                  <p className="font-bold text-blue-600">{Math.round(log.predicted_confidence * 100)}%</p>
+                </div>
+              </div>
+              {predictedSpecies.common_name_sinhalese && (
+                <div className="pt-2">
+                  <p className="text-gray-600 text-sm">Sinhala Name</p>
+                  <p className="font-semibold text-gray-800">{predictedSpecies.common_name_sinhalese}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <p className="text-2xl font-bold text-gray-900">{log.predicted_species_name || 'Unknown Species'}</p>
+              <p className="text-sm text-gray-600 mt-2">Confidence: {Math.round(log.predicted_confidence * 100)}%</p>
+            </div>
+          )}
+          <div className="mt-4 pt-4 border-t border-blue-200">
+            <p className="text-xs text-gray-600">User Action: <span className="font-bold text-gray-800">{log.user_action}</span></p>
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL: Review Form - 50% */}
+      <div className="w-1/2 bg-white p-8 flex flex-col border-l-4 border-blue-600 overflow-y-auto" style={{ maxHeight: '100vh' }}>
+        <h2 className="text-3xl font-bold text-[#134a86] mb-6">Submit Expert Review</h2>
+
         {/* Help Text */}
-        <div className="bg-gray-50 p-4 rounded-lg mb-4 border border-gray-200">
-          <p className="text-sm font-semibold text-gray-700 mb-2">📋 How to Review:</p>
-          <ul className="text-xs text-gray-600 space-y-1">
-            <li>• <strong>Agree:</strong> The AI prediction is correct</li>
-            <li>• <strong>Correct:</strong> The AI is wrong, you'll specify the right species</li>
-            <li>• <strong>Unsure:</strong> You're not confident enough to confirm or correct</li>
+        <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-5 rounded-xl mb-6 border border-blue-300 shadow-sm">
+          <p className="text-sm font-bold text-blue-900 mb-3">📋 Review Guidelines</p>
+          <ul className="text-sm text-gray-700 space-y-2">
+            <li className="flex items-start gap-2">
+              <span className="text-green-600 font-bold">✅</span>
+              <span><strong>Agree:</strong> The AI prediction is correct</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-orange-600 font-bold">✏️</span>
+              <span><strong>Correct:</strong> The AI is wrong, specify the right species</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-yellow-600 font-bold">❓</span>
+              <span><strong>Unsure:</strong> Not confident enough to confirm or correct</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-red-600 font-bold">🚫</span>
+              <span><strong>Not a Butterfly:</strong> This image doesn&apos;t contain a butterfly</span>
+            </li>
           </ul>
         </div>
 
         {/* Verdict Form */}
         <div className="space-y-4 flex-1">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-3">Your Verdict</label>
-            <div className="grid grid-cols-3 gap-2">
+            <label className="block text-base font-bold text-gray-800 mb-4">Your Verdict</label>
+            <div className="grid grid-cols-2 gap-3">
               <button 
                 onClick={() => setVerdict('AGREE')}
-                className={`py-3 px-2 rounded-lg border text-sm font-medium transition-all ${verdict === 'AGREE' ? 'bg-green-600 text-white border-green-600 shadow-md' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                className={`py-4 px-3 rounded-xl border-2 text-sm font-medium transition-all transform hover:scale-105 ${verdict === 'AGREE' ? 'bg-green-600 text-white border-green-600 shadow-lg scale-105' : 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-green-400'}`}
               >
-                <div className="text-xl mb-1">✅</div>
-                <div className="text-xs">Agree</div>
+                <div className="text-3xl mb-2">✅</div>
+                <div className="text-sm font-bold">Agree</div>
               </button>
               <button 
                 onClick={() => setVerdict('CORRECT')}
-                className={`py-3 px-2 rounded-lg border text-sm font-medium transition-all ${verdict === 'CORRECT' ? 'bg-orange-600 text-white border-orange-600 shadow-md' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                className={`py-4 px-3 rounded-xl border-2 text-sm font-medium transition-all transform hover:scale-105 ${verdict === 'CORRECT' ? 'bg-orange-600 text-white border-orange-600 shadow-lg scale-105' : 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-orange-400'}`}
               >
-                <div className="text-xl mb-1">✏️</div>
-                <div className="text-xs">Correct</div>
+                <div className="text-3xl mb-2">✏️</div>
+                <div className="text-sm font-bold">Correct</div>
               </button>
               <button 
                 onClick={() => setVerdict('UNSURE')}
-                className={`py-3 px-2 rounded-lg border text-sm font-medium transition-all ${verdict === 'UNSURE' ? 'bg-yellow-500 text-white border-yellow-500 shadow-md' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}
+                className={`py-4 px-3 rounded-xl border-2 text-sm font-medium transition-all transform hover:scale-105 ${verdict === 'UNSURE' ? 'bg-yellow-500 text-white border-yellow-500 shadow-lg scale-105' : 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-yellow-400'}`}
               >
-                <div className="text-xl mb-1">❓</div>
-                <div className="text-xs">Unsure</div>
+                <div className="text-3xl mb-2">❓</div>
+                <div className="text-sm font-bold">Unsure</div>
+              </button>
+              <button 
+                onClick={() => setVerdict('NOT_BUTTERFLY')}
+                className={`py-4 px-3 rounded-xl border-2 text-sm font-medium transition-all transform hover:scale-105 ${verdict === 'NOT_BUTTERFLY' ? 'bg-red-600 text-white border-red-600 shadow-lg scale-105' : 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-red-400'}`}
+              >
+                <div className="text-3xl mb-2">🚫</div>
+                <div className="text-sm font-bold">Not a Butterfly</div>
               </button>
             </div>
             
             {/* Explanation for selected verdict */}
-            <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <p className="text-xs text-blue-800">
+            <div className="mt-4 p-4 bg-blue-50 rounded-xl border-l-4 border-blue-600">
+              <p className="text-sm font-medium text-blue-900">
                 {verdict === 'AGREE' && '✅ You confirm the AI prediction is correct.'}
                 {verdict === 'CORRECT' && '✏️ You disagree with AI and will provide the correct species.'}
                 {verdict === 'UNSURE' && '❓ You cannot confidently confirm or correct this identification.'}
+                {verdict === 'NOT_BUTTERFLY' && '🚫 This image does not contain a butterfly.'}
               </p>
             </div>
           </div>
 
           {/* Conditional Dropdown for Correction */}
           {verdict === 'CORRECT' && (
-            <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <div className="bg-orange-50 p-5 rounded-xl border-2 border-orange-300 shadow-sm">
+              <label className="block text-base font-bold text-orange-900 mb-4">
                 Select the Correct Species
               </label>
-              <p className="text-xs text-gray-600 mb-2">
-                Choose the correct butterfly species from the list below:
-              </p>
+              
+              {/* Search and Filter Controls */}
+              <div className="space-y-2 mb-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Search species..."
+                    value={speciesSearch}
+                    onChange={(e) => setSpeciesSearch(e.target.value)}
+                    className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setSearchFilter('all')}
+                    className={`px-3 py-1 text-xs rounded-lg font-medium transition ${searchFilter === 'all' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                  >
+                    All
+                  </button>
+                  <button
+                    onClick={() => setSearchFilter('common')}
+                    className={`px-3 py-1 text-xs rounded-lg font-medium transition ${searchFilter === 'common' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                  >
+                    Common Name
+                  </button>
+                  <button
+                    onClick={() => setSearchFilter('scientific')}
+                    className={`px-3 py-1 text-xs rounded-lg font-medium transition ${searchFilter === 'scientific' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}
+                  >
+                    Scientific Name
+                  </button>
+                </div>
+              </div>
+
               <select 
                 value={correctSpecies}
                 onChange={(e) => setCorrectSpecies(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                size={8}
               >
-                <option value="">-- Select Species --</option>
-                {speciesList.map(s => (
+                <option value="">-- Select Species ({filteredSpeciesList.length} results) --</option>
+                {filteredSpeciesList.map(s => (
                   <option key={s.butterfly_id} value={s.common_name_english}>
                     {s.common_name_english} ({s.species_name_binomial})
                   </option>
                 ))}
               </select>
+              {filteredSpeciesList.length === 0 && speciesSearch && (
+                <p className="text-xs text-red-600 mt-2">No species found matching your search.</p>
+              )}
             </div>
           )}
 
           {/* New Discovery Toggle */}
-          <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-            <div className="flex items-start gap-3">
+          <div className="bg-purple-50 p-5 rounded-xl border-2 border-purple-300 shadow-sm">
+            <div className="flex items-start gap-4">
               <input 
                 type="checkbox" 
                 id="discovery" 
                 checked={isDiscovery}
                 onChange={(e) => setIsDiscovery(e.target.checked)}
-                className="w-5 h-5 text-purple-600 rounded mt-0.5"
+                className="w-6 h-6 text-purple-600 rounded mt-0.5 cursor-pointer"
               />
               <div className="flex-1">
-                <label htmlFor="discovery" className="text-sm font-semibold text-purple-900 cursor-pointer block mb-1">
+                <label htmlFor="discovery" className="text-base font-bold text-purple-900 cursor-pointer block mb-2">
                   Flag as Potential New Discovery 🌟
                 </label>
-                <p className="text-xs text-purple-700">
+                <p className="text-sm text-purple-700">
                   Check this if you believe this might be a new species or a rare discovery not commonly documented.
                 </p>
               </div>
@@ -246,16 +368,16 @@ export default function ReviewDetail() {
 
           {/* Comments */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
+            <label className="block text-base font-bold text-gray-800 mb-3">
               Scientific Notes (Optional)
             </label>
-            <p className="text-xs text-gray-600 mb-2">
+            <p className="text-sm text-gray-600 mb-3">
               Add observations, reasoning, or any relevant details about your identification.
             </p>
             <textarea 
               value={comments}
               onChange={(e) => setComments(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg p-3 text-sm h-28 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full border-2 border-gray-300 rounded-xl p-4 text-sm h-32 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
               placeholder="E.g., Wing markings clearly show distinctive patterns typical of this species, antenna shape confirms identification..."
             />
           </div>
@@ -265,8 +387,10 @@ export default function ReviewDetail() {
         <button 
           onClick={handleSubmit}
           disabled={submitting || (verdict === 'CORRECT' && !correctSpecies)}
-          className={`w-full py-3 rounded-lg font-bold text-white shadow-md mt-6 ${
-            submitting ? 'bg-gray-400' : 'bg-[#134a86] hover:bg-blue-900'
+          className={`w-full py-4 rounded-xl font-bold text-lg text-white shadow-lg mt-6 transition-all transform ${
+            submitting || (verdict === 'CORRECT' && !correctSpecies) 
+              ? 'bg-gray-400 cursor-not-allowed' 
+              : 'bg-[#134a86] hover:bg-blue-900 hover:scale-105 active:scale-95'
           }`}
         >
           {submitting ? 'Submitting...' : 'Submit Review'}
