@@ -1,23 +1,72 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ProtectedImage from '@/components/ProtectedImage';
 
 export default function RecordDetail() {
   const { id } = useParams();
+  const router = useRouter();
   const [record, setRecord] = useState<any>(null);
   const [predictedSpecies, setPredictedSpecies] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [commentText, setCommentText] = useState<{[key: string]: string}>({});
+  const [commentingOn, setCommentingOn] = useState<string | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+
+  const fetchReviews = async () => {
+    console.log('Fetching reviews for record:', id);
+    // Fetch Reviews with reviewer info and comments
+    const { data: revs, error: reviewError } = await supabase
+      .from('expert_reviews')
+      .select(`
+        *,
+        reviewer:users (first_name, last_name, profession)
+      `)
+      .eq('ai_log_id', id)
+      .order('created_at', { ascending: false });
+
+    if (reviewError) {
+      console.error('Error fetching reviews:', reviewError);
+      return;
+    }
+
+    console.log('Fetched reviews:', revs);
+
+    // Fetch Vote Counts and Comments for each review
+    if (revs) {
+      const reviewsWithData = await Promise.all(revs.map(async (r) => {
+        // Get vote count
+        const { count } = await supabase
+          .from('review_ratings')
+          .select('*', { count: 'exact', head: true })
+          .eq('review_id', r.id)
+          .eq('is_helpful', true);
+        
+        // Get comments with commenter info
+        const { data: comments } = await supabase
+          .from('review_comments')
+          .select(`
+            *,
+            commenter:users (first_name, last_name, profession)
+          `)
+          .eq('review_id', r.id)
+          .order('created_at', { ascending: true });
+        
+        return { ...r, helpful_count: count || 0, comments: comments || [] };
+      }));
+      console.log('Reviews with votes and comments:', reviewsWithData);
+      setReviews(reviewsWithData);
+    }
+  };
 
   useEffect(() => {
     const init = async () => {
@@ -48,34 +97,22 @@ export default function RecordDetail() {
         setPredictedSpecies(species);
       }
 
-      // 2. Fetch Reviews + Ratings Count
-      // Note: In a real production app, we'd use a SQL View or Join for ratings. 
-      // Here we fetch simple reviews for simplicity.
-      const { data: revs } = await supabase
-        .from('expert_reviews')
-        .select(`
-          *,
-          reviewer:users (first_name, last_name, profession)
-        `)
-        .eq('ai_log_id', id)
-        .order('created_at', { ascending: false });
-
-      // 3. Fetch Vote Counts manually for now
-      if (revs) {
-        const reviewsWithVotes = await Promise.all(revs.map(async (r) => {
-          const { count } = await supabase
-            .from('review_ratings')
-            .select('*', { count: 'exact', head: true })
-            .eq('review_id', r.id)
-            .eq('is_helpful', true);
-          return { ...r, helpful_count: count || 0 };
-        }));
-        setReviews(reviewsWithVotes);
-      }
+      // 2. Fetch Reviews
+      await fetchReviews();
       
       setLoading(false);
     };
     init();
+
+    // Refetch reviews when window regains focus (user returns from review page)
+    const handleFocus = () => {
+      fetchReviews();
+    };
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
   }, [id]);
 
   // --- ACTIONS ---
@@ -96,10 +133,44 @@ export default function RecordDetail() {
     }
   };
 
+  const handleComment = async (reviewId: string) => {
+    if (!currentUser) return alert("Please login to comment");
+    if (!userProfile?.verification_status === 'verified') return alert("Only verified experts can comment");
+    
+    const comment = commentText[reviewId]?.trim();
+    if (!comment) return alert("Please enter a comment");
+
+    const { error } = await supabase
+      .from('review_comments')
+      .insert({ review_id: reviewId, commenter_id: currentUser.id, comment_text: comment });
+
+    if (error) {
+      console.error('Comment error:', error);
+      alert("Failed to post comment: " + error.message);
+    } else {
+      alert("Comment posted successfully!");
+      setCommentText(prev => ({ ...prev, [reviewId]: '' }));
+      setCommentingOn(null);
+      // Refresh reviews to show new comment count
+      await fetchReviews();
+    }
+  };
+
   if (loading || !record) return <div className="p-10 text-center">Loading Record...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 p-6">
+      {/* Navigation */}
+      <div className="max-w-5xl mx-auto mb-4">
+        <Link
+          href="/records"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-white text-gray-700 rounded-lg hover:bg-gray-100 border border-gray-300 transition-all"
+        >
+          <span>←</span>
+          <span>Back to Records</span>
+        </Link>
+      </div>
+
       <div className="max-w-5xl mx-auto grid md:grid-cols-2 gap-8">
         
         {/* Left: Image */}
@@ -214,8 +285,75 @@ export default function RecordDetail() {
                      >
                        👍 Helpful ({review.helpful_count})
                      </button>
+                     {userProfile?.verification_status === 'verified' && (
+                       <button
+                         onClick={() => setCommentingOn(commentingOn === review.id ? null : review.id)}
+                         className="flex items-center gap-1 hover:text-green-600 transition"
+                       >
+                         💬 Comment
+                       </button>
+                     )}
                      <span>{new Date(review.created_at).toLocaleDateString()}</span>
                   </div>
+
+                  {/* Comment Form */}
+                  {commentingOn === review.id && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <textarea
+                        value={commentText[review.id] || ''}
+                        onChange={(e) => setCommentText(prev => ({ ...prev, [review.id]: e.target.value }))}
+                        placeholder="Add your expert comment..."
+                        className="w-full border border-gray-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        rows={3}
+                      />
+                      <div className="flex gap-2 mt-2">
+                        <button
+                          onClick={() => handleComment(review.id)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                        >
+                          Post Comment
+                        </button>
+                        <button
+                          onClick={() => {
+                            setCommentingOn(null);
+                            setCommentText(prev => ({ ...prev, [review.id]: '' }));
+                          }}
+                          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Display Comments */}
+                  {review.comments && review.comments.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
+                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Comments ({review.comments.length})</p>
+                      {review.comments.map((comment: any) => (
+                        <div key={comment.id} className="bg-gray-50 p-3 rounded-lg">
+                          <div className="flex items-start gap-2">
+                            <div className="bg-green-100 text-green-800 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0">
+                              {comment.commenter?.first_name[0]}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p className="font-semibold text-sm text-gray-800">
+                                  {comment.commenter?.first_name} {comment.commenter?.last_name}
+                                </p>
+                                <span className="text-xs text-gray-500">•</span>
+                                <p className="text-xs text-gray-500">{comment.commenter?.profession}</p>
+                              </div>
+                              <p className="text-sm text-gray-700">{comment.comment_text}</p>
+                              <p className="text-xs text-gray-400 mt-1">
+                                {new Date(comment.created_at).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))
             )}

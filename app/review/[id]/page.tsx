@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import Image from 'next/image';
 import ProtectedImage from '@/components/ProtectedImage';
 
@@ -100,11 +101,12 @@ export default function ReviewDetail() {
         });
 
       if (error) {
+        console.error('Review submission error:', error);
         alert("Submission Failed: " + error.message);
         setSubmitting(false);
       } else {
         alert("Review Submitted Successfully!");
-        router.push('/records');
+        router.push(`/records/${id}`);
       }
       return;
     }
@@ -129,11 +131,12 @@ export default function ReviewDetail() {
       });
 
     if (error) {
+      console.error('Review submission error:', error);
       alert("Submission Failed: " + error.message);
       setSubmitting(false);
     } else {
       alert("Review Submitted Successfully!");
-      router.push('/records');
+      router.push(`/records/${id}`);
     }
   };
 
@@ -157,10 +160,34 @@ export default function ReviewDetail() {
   if (loading || !log) return <div className="p-10 text-center">Loading Workstation...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      
-      {/* LEFT PANEL: Image Viewer with AI Details - 50% */}
-      <div className="w-1/2 p-6 flex flex-col gap-6 overflow-y-auto" style={{ maxHeight: '100vh' }}>
+    <div className="min-h-screen bg-gray-50">
+      {/* Navigation Bar */}
+      <div className="bg-white border-b border-gray-200 px-6 py-3">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/records"
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 transition-all"
+            >
+              <span>←</span>
+              <span className="text-sm">All Records</span>
+            </Link>
+            <span className="text-gray-400">|</span>
+            <Link
+              href={`/records/${id}`}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-gray-600 hover:text-gray-900 transition-all"
+            >
+              <span>←</span>
+              <span className="text-sm">Record Details</span>
+            </Link>
+          </div>
+          <span className="text-sm font-medium text-gray-700">Expert Review Form</span>
+        </div>
+      </div>
+
+      <div className="flex">
+        {/* LEFT PANEL: Image Viewer with AI Details - 50% */}
+        <div className="w-1/2 p-6 flex flex-col gap-6 overflow-y-auto" style={{ maxHeight: '100vh' }}>
         {/* Image */}
         <div className="bg-black rounded-xl overflow-hidden shadow-xl">
           <div className="relative w-full" style={{ height: '55vh' }}>
@@ -397,6 +424,11 @@ export default function ReviewDetail() {
         </button>
 
       </div>
+      {/* End RIGHT PANEL */}
+
+      </div>
+      {/* End flex container */}
+
     </div>
   );
 }

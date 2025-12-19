@@ -148,7 +148,7 @@ export default function RecordsGallery() {
           <div>
             <h1 className="text-3xl font-bold text-[#134a86]">Butterfly Records</h1>
             <p className="text-gray-600">
-              {filteredRecords.length} {filteredRecords.length === 1 ? 'record' : 'records'} found
+              Click on any record to view details and expert reviews • {filteredRecords.length} {filteredRecords.length === 1 ? 'record' : 'records'} found
             </p>
           </div>
 
