@@ -90,9 +90,10 @@ CREATE OR REPLACE FUNCTION notify_review_author()
 RETURNS TRIGGER AS $$
 DECLARE
   review_author_id uuid;
+  record_id uuid;
 BEGIN
-  -- Get the author of the review that was commented on
-  SELECT reviewer_id INTO review_author_id
+  -- Get the author of the review and the ai_log_id (record) that was commented on
+  SELECT reviewer_id, ai_log_id INTO review_author_id, record_id
   FROM public.expert_reviews
   WHERE id = NEW.review_id;
   
@@ -104,7 +105,7 @@ BEGIN
       'review_comment',
       'New Comment on Your Review',
       'Someone commented on your expert review.',
-      NEW.id
+      record_id
     );
   END IF;
   

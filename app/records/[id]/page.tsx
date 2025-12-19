@@ -24,12 +24,12 @@ export default function RecordDetail() {
 
   const fetchReviews = async () => {
     console.log('Fetching reviews for record:', id);
-    // Fetch Reviews with reviewer info and comments
+    // Fetch Reviews with reviewer info
     const { data: revs, error: reviewError } = await supabase
       .from('expert_reviews')
       .select(`
         *,
-        reviewer:users (first_name, last_name, profession)
+        reviewer:users!reviewer_id (first_name, last_name, profession)
       `)
       .eq('ai_log_id', id)
       .order('created_at', { ascending: false });
@@ -52,16 +52,24 @@ export default function RecordDetail() {
           .eq('is_helpful', true);
         
         // Get comments with commenter info
-        const { data: comments } = await supabase
+        const { data: comments, error: commentsError } = await supabase
           .from('review_comments')
           .select(`
-            *,
-            commenter:users (first_name, last_name, profession)
+            id,
+            comment_text,
+            created_at,
+            commenter:users!commenter_id (first_name, last_name, profession)
           `)
           .eq('review_id', r.id)
           .order('created_at', { ascending: true });
         
-        return { ...r, helpful_count: count || 0, comments: comments || [] };
+        if (commentsError) {
+          console.error('Error fetching comments for review', r.id, ':', commentsError);
+        } else {
+          console.log('Comments for review', r.id, ':', comments);
+        }
+        
+        return { ...r, helpful_count: count || 0, review_comments: comments || [] };
       }));
       console.log('Reviews with votes and comments:', reviewsWithData);
       setReviews(reviewsWithData);
@@ -327,31 +335,44 @@ export default function RecordDetail() {
                   )}
 
                   {/* Display Comments */}
-                  {review.comments && review.comments.length > 0 && (
+                  {review.review_comments && Array.isArray(review.review_comments) && review.review_comments.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
-                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Comments ({review.comments.length})</p>
-                      {review.comments.map((comment: any) => (
-                        <div key={comment.id} className="bg-gray-50 p-3 rounded-lg">
-                          <div className="flex items-start gap-2">
-                            <div className="bg-green-100 text-green-800 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0">
-                              {comment.commenter?.first_name[0]}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="font-semibold text-sm text-gray-800">
-                                  {comment.commenter?.first_name} {comment.commenter?.last_name}
-                                </p>
-                                <span className="text-xs text-gray-500">•</span>
-                                <p className="text-xs text-gray-500">{comment.commenter?.profession}</p>
+                      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                        Comments ({review.review_comments.length})
+                      </p>
+                      {review.review_comments.map((comment: any) => {
+                        if (!comment || typeof comment !== 'object') return null;
+                        
+                        const commenterName = String(comment.commenter?.first_name || 'Unknown');
+                        const commenterLastName = String(comment.commenter?.last_name || '');
+                        const commenterProfession = String(comment.commenter?.profession || 'Expert');
+                        const commenterInitial = commenterName.charAt(0) || '?';
+                        const commentText = String(comment.comment_text || '');
+                        const commentId = String(comment.id || Math.random());
+                        
+                        return (
+                          <div key={commentId} className="bg-gray-50 p-3 rounded-lg">
+                            <div className="flex items-start gap-2">
+                              <div className="bg-green-100 text-green-800 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0">
+                                {commenterInitial}
                               </div>
-                              <p className="text-sm text-gray-700">{comment.comment_text}</p>
-                              <p className="text-xs text-gray-400 mt-1">
-                                {new Date(comment.created_at).toLocaleString()}
-                              </p>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <p className="font-semibold text-sm text-gray-800">
+                                    {commenterName} {commenterLastName}
+                                  </p>
+                                  <span className="text-xs text-gray-500">•</span>
+                                  <p className="text-xs text-gray-500">{commenterProfession}</p>
+                                </div>
+                                <p className="text-sm text-gray-700">{commentText}</p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {new Date(comment.created_at).toLocaleString()}
+                                </p>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

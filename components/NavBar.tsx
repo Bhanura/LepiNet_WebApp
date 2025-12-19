@@ -241,11 +241,15 @@ export default function NavBar() {
                             <div
                               key={notification.id}
                               onClick={() => {
+                                console.log('Notification clicked:', notification);
                                 if (!notification.is_read) markAsRead(notification.id);
                                 setShowNotifications(false);
                                 // Navigate if related_id exists
-                                if (notification.related_id && notification.type === 'review_comment') {
-                                  router.push(`/records/${notification.related_id}`);
+                                if (notification.related_id) {
+                                  if (notification.type === 'review_comment') {
+                                    console.log('Navigating to:', `/records/${notification.related_id}`);
+                                    router.push(`/records/${notification.related_id}`);
+                                  }
                                 }
                               }}
                               className={`px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors cursor-pointer ${
