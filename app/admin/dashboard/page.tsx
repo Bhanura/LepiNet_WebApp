@@ -143,10 +143,14 @@ export default function AdminDashboard() {
 
   const handleVerification = async (userId: string, approved: boolean) => {
     const status = approved ? 'verified' : 'rejected';
+    const role = approved ? 'expert' : 'user'; // Automatically change role to expert when approved
     
     const { error } = await supabase
       .from('users')
-      .update({ verification_status: status })
+      .update({ 
+        verification_status: status,
+        role: role
+      })
       .eq('id', userId);
 
     if (error) {
@@ -194,9 +198,16 @@ export default function AdminDashboard() {
     if (!confirm(`Are you sure you want to ${isBanned ? 'BAN' : 'UNBAN'} this user?`)) return;
     
     const status = isBanned ? 'banned' : 'none';
+    const updates: any = { verification_status: status };
+    
+    // Reset role to 'user' when banning or unbanning (they need to reapply to become expert)
+    if (isBanned || status === 'none') {
+      updates.role = 'user';
+    }
+    
     const { error } = await supabase
       .from('users')
-      .update({ verification_status: status })
+      .update(updates)
       .eq('id', userId);
 
     if (error) {

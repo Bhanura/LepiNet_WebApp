@@ -89,38 +89,18 @@ export default function UserDashboard() {
       <div className="max-w-7xl mx-auto">
         
         {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start mb-8 gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-[#134a86]">
-              {isVerifiedExpert ? 'Expert Dashboard' : 'My Dashboard'}
-            </h1>
-            <p className="text-gray-600">
-              Welcome back, {profile?.first_name || 'contributor'}!
-            </p>
-            {isVerifiedExpert && (
-              <span className="inline-block mt-2 bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
-                ✓ Verified Expert
-              </span>
-            )}
-          </div>
-
-          <div className="flex gap-3">
-            <Link 
-              href="/profile" 
-              className="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
-            >
-              Edit Profile
-            </Link>
-            <button 
-              onClick={async () => {
-                await supabase.auth.signOut();
-                router.push('/login');
-              }}
-              className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-            >
-              Logout
-            </button>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-[#134a86]">
+            {isVerifiedExpert ? 'Expert Dashboard' : 'My Dashboard'}
+          </h1>
+          <p className="text-gray-600">
+            Welcome back, {profile?.first_name || 'contributor'}!
+          </p>
+          {isVerifiedExpert && (
+            <span className="inline-block mt-2 bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-medium">
+              ✓ Verified Expert
+            </span>
+          )}
         </div>
 
         {/* Expert Application Card for non-verified users */}
@@ -160,37 +140,6 @@ export default function UserDashboard() {
                   Your expert verification request is being reviewed by our administrators.
                 </p>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Notifications */}
-        {notifications.length > 0 && (
-          <div className="mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-            <h3 className="text-lg font-bold mb-4 text-gray-800">Recent Notifications</h3>
-            <div className="space-y-3">
-              {notifications.map(notif => (
-                <div 
-                  key={notif.id} 
-                  className={`flex items-start gap-3 p-3 rounded-lg ${notif.is_read ? 'bg-gray-50' : 'bg-blue-50 border border-blue-200'}`}
-                >
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-800">{notif.title}</p>
-                    <p className="text-sm text-gray-600">{notif.message}</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(notif.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  {!notif.is_read && (
-                    <button 
-                      onClick={() => markNotificationAsRead(notif.id)}
-                      className="text-xs text-blue-600 hover:underline"
-                    >
-                      Mark as read
-                    </button>
-                  )}
-                </div>
-              ))}
             </div>
           </div>
         )}

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useParams } from 'next/navigation';
+import Link from 'next/link';
 import ProtectedImage from '@/components/ProtectedImage';
 
 export default function RecordDetail() {
@@ -9,6 +10,7 @@ export default function RecordDetail() {
   const [record, setRecord] = useState<any>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   const supabase = createBrowserClient(
@@ -20,6 +22,16 @@ export default function RecordDetail() {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setCurrentUser(user);
+
+      if (user) {
+        // Fetch user profile to check if verified expert
+        const { data: profile } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+        setUserProfile(profile);
+      }
 
       // 1. Fetch Record
       const { data: rec } = await supabase.from('ai_logs').select('*').eq('id', id).single();
@@ -106,7 +118,18 @@ export default function RecordDetail() {
 
         {/* Right: Expert Reviews */}
         <div>
-          <h2 className="text-2xl font-bold text-[#134a86] mb-6">Expert Reviews ({reviews.length})</h2>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold text-[#134a86]">Expert Reviews ({reviews.length})</h2>
+            {userProfile?.verification_status === 'verified' && (
+              <Link
+                href={`/review/${id}`}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium transition-all flex items-center gap-2"
+              >
+                <span>✍️</span>
+                <span>Add Review</span>
+              </Link>
+            )}
+          </div>
 
           <div className="space-y-4">
             {reviews.length === 0 ? (
