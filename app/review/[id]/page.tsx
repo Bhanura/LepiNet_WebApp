@@ -31,23 +31,39 @@ export default function ReviewDetail() {
   useEffect(() => {
     const init = async () => {
       // 1. Load Log Details
-      const { data: logData } = await supabase
+      const { data: logData, error: logError } = await supabase
         .from('ai_logs')
         .select('*')
         .eq('id', id)
         .single();
       
+      if (logError) {
+        console.error('Error loading log:', logError);
+        console.error('Error details:', JSON.stringify(logError, null, 2));
+        alert(`Failed to load record: ${logError.message || 'Unknown error'}`);
+      }
+      
+      console.log('Log Data:', logData);
       setLog(logData);
 
       // 2. Load Predicted Species Details from species table
       if (logData?.predicted_id) {
-        const { data: predictedSpeciesData } = await supabase
+        console.log('Fetching species for predicted_id:', logData.predicted_id);
+        const { data: predictedSpeciesData, error: speciesError } = await supabase
           .from('species')
           .select('*')
           .eq('butterfly_id', logData.predicted_id)
           .single();
         
-        setPredictedSpecies(predictedSpeciesData);
+        if (speciesError) {
+          console.error('Error loading species:', speciesError);
+          console.error('Species error details:', JSON.stringify(speciesError, null, 2));
+        } else {
+          console.log('Predicted Species Data:', predictedSpeciesData);
+          setPredictedSpecies(predictedSpeciesData);
+        }
+      } else {
+        console.log('No predicted_id found in log data');
       }
 
       // 3. Load Species List for dropdown

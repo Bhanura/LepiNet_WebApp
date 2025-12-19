@@ -405,17 +405,6 @@ export default function NavBar() {
                         <span className="font-medium">Records</span>
                       </Link>
 
-                      {profile?.verification_status === 'verified' && (
-                        <Link
-                          href="/review/page"
-                          onClick={() => setShowDropdown(false)}
-                          className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                        >
-                          <span className="text-xl">🔍</span>
-                          <span className="font-medium">Review Records</span>
-                        </Link>
-                      )}
-
                       <div className="border-t border-gray-100 mt-2"></div>
 
                       <button
