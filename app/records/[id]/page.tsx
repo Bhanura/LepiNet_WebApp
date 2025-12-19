@@ -16,6 +16,7 @@ export default function RecordDetail() {
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState<{[key: string]: string}>({});
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
+  const [showCommentsFor, setShowCommentsFor] = useState<string | null>(null);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -298,7 +299,15 @@ export default function RecordDetail() {
                          onClick={() => setCommentingOn(commentingOn === review.id ? null : review.id)}
                          className="flex items-center gap-1 hover:text-green-600 transition"
                        >
-                         💬 Comment
+                         💬 Comment ({review.review_comments?.length || 0})
+                       </button>
+                     )}
+                     {review.review_comments && review.review_comments.length > 0 && (
+                       <button
+                         onClick={() => setShowCommentsFor(showCommentsFor === review.id ? null : review.id)}
+                         className="flex items-center gap-1 hover:text-indigo-600 transition font-medium"
+                       >
+                         {showCommentsFor === review.id ? '▼ Hide' : '▶ View'} Comments ({review.review_comments.length})
                        </button>
                      )}
                      <span>{new Date(review.created_at).toLocaleDateString()}</span>
@@ -335,7 +344,7 @@ export default function RecordDetail() {
                   )}
 
                   {/* Display Comments */}
-                  {review.review_comments && Array.isArray(review.review_comments) && review.review_comments.length > 0 && (
+                  {showCommentsFor === review.id && review.review_comments && Array.isArray(review.review_comments) && review.review_comments.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-200 space-y-3">
                       <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
                         Comments ({review.review_comments.length})
