@@ -30,7 +30,7 @@ export default function RecordDetail() {
       .from('expert_reviews')
       .select(`
         *,
-        reviewer:users!reviewer_id (first_name, last_name, profession)
+        reviewer:users!reviewer_id (id, first_name, last_name, profession, profile_photo_url)
       `)
       .eq('ai_log_id', id)
       .order('created_at', { ascending: false });
@@ -59,7 +59,7 @@ export default function RecordDetail() {
             id,
             comment_text,
             created_at,
-            commenter:users!commenter_id (first_name, last_name, profession)
+            commenter:users!commenter_id (id, first_name, last_name, profession, profile_photo_url)
           `)
           .eq('review_id', r.id)
           .order('created_at', { ascending: true });
@@ -264,11 +264,24 @@ export default function RecordDetail() {
                 <div key={review.id} className="bg-white p-5 rounded-xl shadow-sm border border-gray-200">
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex items-center gap-2">
-                       <div className="bg-blue-100 text-blue-800 w-8 h-8 rounded-full flex items-center justify-center font-bold">
-                         {review.reviewer?.first_name[0]}
-                       </div>
+                       {review.reviewer?.profile_photo_url ? (
+                         <img
+                           src={review.reviewer.profile_photo_url}
+                           alt={`${review.reviewer.first_name} ${review.reviewer.last_name}`}
+                           className="w-8 h-8 rounded-full object-cover border-2 border-blue-200"
+                         />
+                       ) : (
+                         <div className="bg-blue-100 text-blue-800 w-8 h-8 rounded-full flex items-center justify-center font-bold">
+                           {review.reviewer?.first_name[0]}
+                         </div>
+                       )}
                        <div>
-                         <p className="font-bold text-sm">{review.reviewer?.first_name} {review.reviewer?.last_name}</p>
+                         <Link 
+                           href={`/profile/${review.reviewer?.id}`}
+                           className="font-bold text-sm hover:text-blue-600 transition-colors cursor-pointer"
+                         >
+                           {review.reviewer?.first_name} {review.reviewer?.last_name}
+                         </Link>
                          <p className="text-xs text-gray-500">{review.reviewer?.profession}</p>
                        </div>
                     </div>
@@ -358,18 +371,31 @@ export default function RecordDetail() {
                         const commenterInitial = commenterName.charAt(0) || '?';
                         const commentText = String(comment.comment_text || '');
                         const commentId = String(comment.id || Math.random());
+                        const commenterProfilePhoto = comment.commenter?.profile_photo_url;
+                        const commenterId = comment.commenter?.id;
                         
                         return (
                           <div key={commentId} className="bg-gray-50 p-3 rounded-lg">
                             <div className="flex items-start gap-2">
-                              <div className="bg-green-100 text-green-800 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0">
-                                {commenterInitial}
-                              </div>
+                              {commenterProfilePhoto ? (
+                                <img
+                                  src={commenterProfilePhoto}
+                                  alt={`${commenterName} ${commenterLastName}`}
+                                  className="w-7 h-7 rounded-full object-cover border-2 border-green-200 flex-shrink-0"
+                                />
+                              ) : (
+                                <div className="bg-green-100 text-green-800 w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0">
+                                  {commenterInitial}
+                                </div>
+                              )}
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 mb-1">
-                                  <p className="font-semibold text-sm text-gray-800">
+                                  <Link
+                                    href={`/profile/${commenterId}`}
+                                    className="font-semibold text-sm text-gray-800 hover:text-green-600 transition-colors cursor-pointer"
+                                  >
                                     {commenterName} {commenterLastName}
-                                  </p>
+                                  </Link>
                                   <span className="text-xs text-gray-500">•</span>
                                   <p className="text-xs text-gray-500">{commenterProfession}</p>
                                 </div>
