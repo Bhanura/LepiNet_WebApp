@@ -233,6 +233,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleRetrain = async () => {
+    const secret = prompt("Enter Admin Secret to start training:");
+    if (!secret) return;
+
+    // Use your actual Hugging Face URL
+    const AI_URL = "https://bhanura-lepinet-backend.hf.space/retrain"; 
+    
+    try {
+        const res = await fetch(`${AI_URL}?secret=${secret}`, { method: 'POST' });
+        const data = await res.json();
+        alert(JSON.stringify(data));
+    } catch (e) {
+        alert("Failed to contact AI Server");
+    }
+  };
+
   const pendingApplicants = users.filter(u => u.verification_status === 'pending');
 
   if (loading) return <div className="p-10 text-center">Loading Dashboard...</div>;
@@ -495,6 +511,12 @@ export default function AdminDashboard() {
                 />
               </div>
             </div>
+            <button 
+              onClick={handleRetrain}
+              className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg font-bold shadow-md flex items-center gap-2"
+              >
+                🧠 Train AI Model
+            </button>
           </div>
         )}
       </div>

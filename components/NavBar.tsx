@@ -305,17 +305,6 @@ export default function NavBar() {
                   )}
                 </div>
 
-                {/* Admin Link */}
-                {role === 'admin' && (
-                  <Link 
-                    href="/admin/dashboard" 
-                    className="flex items-center gap-2 px-4 py-2 text-purple-700 hover:text-purple-600 hover:bg-purple-50 rounded-lg font-medium transition-all"
-                  >
-                    <span className="text-xl">👑</span>
-                    <span className="hidden sm:inline">Admin</span>
-                  </Link>
-                )}
-
                 {/* User Profile Dropdown */}
                 <div className="relative">
                   <button
@@ -388,6 +377,28 @@ export default function NavBar() {
                         <span className="text-xl">📊</span>
                         <span className="font-medium">My Dashboard</span>
                       </Link>
+
+                      {role === 'admin' && (
+                        <>
+                          <Link
+                            href="/admin/dashboard"
+                            onClick={() => setShowDropdown(false)}
+                            className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                          >
+                            <span className="text-xl">👑</span>
+                            <span className="font-medium">Admin Dashboard</span>
+                          </Link>
+
+                          <Link
+                            href="/admin/training"
+                            onClick={() => setShowDropdown(false)}
+                            className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors"
+                          >
+                            <span className="text-xl">🚀</span>
+                            <span className="font-medium">AI Training</span>
+                          </Link>
+                        </>
+                      )}
 
                       {role === 'user' && profile?.verification_status !== 'verified' && profile?.verification_status !== 'pending' && (
                         <Link
