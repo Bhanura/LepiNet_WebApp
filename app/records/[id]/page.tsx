@@ -144,7 +144,7 @@ export default function RecordDetail() {
 
   const handleComment = async (reviewId: string) => {
     if (!currentUser) return alert("Please login to comment");
-    if (!userProfile?.verification_status === 'verified') return alert("Only verified experts can comment");
+    if (userProfile?.verification_status !== 'verified') return alert("Only verified experts can comment");
     
     const comment = commentText[reviewId]?.trim();
     if (!comment) return alert("Please enter a comment");
