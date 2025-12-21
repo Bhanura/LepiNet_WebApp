@@ -20,6 +20,7 @@ export default function ReviewDetail() {
 
   // Form State
   const [verdict, setVerdict] = useState<'AGREE' | 'CORRECT' | 'UNSURE' | 'NOT_BUTTERFLY'>('AGREE');
+  const [confidenceLevel, setConfidenceLevel] = useState<'certain' | 'uncertain'>('certain');
   const [correctSpecies, setCorrectSpecies] = useState('');
   const [isDiscovery, setIsDiscovery] = useState(false);
   const [comments, setComments] = useState('');
@@ -125,7 +126,7 @@ export default function ReviewDetail() {
         reviewer_id: user.id,
         agreed_with_ai: agreed,
         identified_species_name: finalName,
-        confidence_level: verdict === 'UNSURE' ? 'uncertain' : 'certain',
+        confidence_level: confidenceLevel,
         is_new_discovery: isDiscovery,
         comments: comments
       });
@@ -311,6 +312,60 @@ export default function ReviewDetail() {
                 {verdict === 'NOT_BUTTERFLY' && '🚫 This image does not contain a butterfly.'}
               </p>
             </div>
+          </div>
+
+          {/* Confidence Level Selection */}
+          <div className="bg-gradient-to-br from-teal-50 to-cyan-50 p-5 rounded-xl border-2 border-teal-300 shadow-sm">
+            <label className="block text-base font-bold text-teal-900 mb-3">
+              Your Confidence Level 🎯
+            </label>
+            <p className="text-sm text-teal-700 mb-4">
+              <strong>Important:</strong> Reviews marked as &quot;Certain&quot; may be used to improve the AI model through training.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                onClick={() => setConfidenceLevel('certain')}
+                className={`py-4 px-4 rounded-xl border-2 text-sm font-medium transition-all transform hover:scale-105 ${
+                  confidenceLevel === 'certain' 
+                    ? 'bg-teal-600 text-white border-teal-600 shadow-lg scale-105' 
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-teal-400'
+                }`}
+              >
+                <div className="text-3xl mb-2">💯</div>
+                <div className="font-bold">Certain</div>
+                <div className="text-xs mt-1 opacity-90">100% confident in my identification</div>
+              </button>
+              <button 
+                onClick={() => setConfidenceLevel('uncertain')}
+                className={`py-4 px-4 rounded-xl border-2 text-sm font-medium transition-all transform hover:scale-105 ${
+                  confidenceLevel === 'uncertain' 
+                    ? 'bg-amber-500 text-white border-amber-500 shadow-lg scale-105' 
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-amber-400'
+                }`}
+              >
+                <div className="text-3xl mb-2">🤔</div>
+                <div className="font-bold">Uncertain</div>
+                <div className="text-xs mt-1 opacity-90">Some doubts about identification</div>
+              </button>
+            </div>
+            
+            {/* Training Eligibility Indicator */}
+            {confidenceLevel === 'certain' && verdict !== 'UNSURE' && verdict !== 'NOT_BUTTERFLY' && (
+              <div className="mt-4 p-3 bg-green-100 rounded-lg border border-green-300">
+                <p className="text-xs font-semibold text-green-800 flex items-center gap-2">
+                  <span>🌟</span>
+                  <span>This review is eligible for AI training data</span>
+                </p>
+              </div>
+            )}
+            {confidenceLevel === 'uncertain' && (
+              <div className="mt-4 p-3 bg-amber-100 rounded-lg border border-amber-300">
+                <p className="text-xs font-semibold text-amber-800 flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>This review will not be used for AI training</span>
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Conditional Dropdown for Correction */}
