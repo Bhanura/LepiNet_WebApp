@@ -12,6 +12,11 @@ type RecordWithStats = {
   user_id: string;
   created_at: string;
   review_count: number;
+  species_details?: {
+    common_name_english: string;
+    species_name_binomial: string;
+    family: string;
+  } | null;
 };
 
 export default function RecordsGallery() {
