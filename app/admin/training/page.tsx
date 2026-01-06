@@ -21,14 +21,19 @@ export default function TrainingCurator() {
 
   useEffect(() => {
     fetchCandidates();
-  }, [filterTrainingStatus]);
+  }, []);
 
   useEffect(() => {
     applyFilters();
-  }, [candidates, filterStatus, searchSpecies]);
+  }, [candidates, filterStatus, filterTrainingStatus, searchSpecies]);
 
   const applyFilters = () => {
     let filtered = [...candidates];
+
+    // Filter by training status
+    if (filterTrainingStatus !== 'all') {
+      filtered = filtered.filter(c => c.training_status === filterTrainingStatus);
+    }
 
     // Filter by status
     if (filterStatus === 'agreed') {
@@ -68,8 +73,8 @@ export default function TrainingCurator() {
 
     console.log('Fetching expert_reviews...');
 
-    // Fetch Reviews with ai_logs data - filter by training status
-    const query = supabase
+    // Fetch ALL Reviews with ai_logs data (no training status filter on query)
+    const { data, error } = await supabase
       .from('expert_reviews')
       .select(`
         id, 
@@ -84,13 +89,6 @@ export default function TrainingCurator() {
       .eq('confidence_level', 'certain')
       .neq('identified_species_name', 'Not a Butterfly')
       .order('created_at', { ascending: false });
-    
-    // Apply training status filter
-    if (filterTrainingStatus !== 'all') {
-      query.eq('training_status', filterTrainingStatus);
-    }
-
-    const { data, error } = await query;
     
     if (error) {
       console.error('Error fetching candidates:', error);
