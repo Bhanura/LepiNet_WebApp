@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       .toBuffer();
 
     // 4. Return the image
-    return new NextResponse(watermarkedImage, {
+    return new NextResponse(watermarkedImage as unknown as BodyInit, {
       headers: {
         'Content-Type': 'image/jpeg',
         'Cache-Control': 'public, max-age=31536000, immutable',
