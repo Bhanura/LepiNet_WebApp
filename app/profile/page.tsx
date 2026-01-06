@@ -209,7 +209,7 @@ export default function ProfilePage() {
                   label="First Name"
                   value={formData.first_name || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('first_name', val)}
+                  onChange={(val: string) => handleChange('first_name', val)}
                   required
                 />
 
@@ -217,7 +217,7 @@ export default function ProfilePage() {
                   label="Last Name"
                   value={formData.last_name || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('last_name', val)}
+                  onChange={(val: string) => handleChange('last_name', val)}
                   required
                 />
 
@@ -232,7 +232,7 @@ export default function ProfilePage() {
                   label="Mobile"
                   value={formData.mobile || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('mobile', val)}
+                  onChange={(val: string) => handleChange('mobile', val)}
                   placeholder="+94 XX XXX XXXX"
                   icon="📱"
                 />
@@ -241,7 +241,7 @@ export default function ProfilePage() {
                   label="Birthday"
                   value={formData.birthday || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('birthday', val)}
+                  onChange={(val: string) => handleChange('birthday', val)}
                   type="date"
                   icon="🎂"
                 />
@@ -250,7 +250,7 @@ export default function ProfilePage() {
                   label="Gender"
                   value={formData.gender || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('gender', val)}
+                  onChange={(val: string) => handleChange('gender', val)}
                   type="select"
                   options={['Male', 'Female', 'Other', 'Prefer not to say']}
                   icon="⚧"
@@ -260,7 +260,7 @@ export default function ProfilePage() {
                   label="Education Level"
                   value={formData.educational_level || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('educational_level', val)}
+                  onChange={(val: string) => handleChange('educational_level', val)}
                   icon="🎓"
                 />
               </div>
@@ -275,7 +275,7 @@ export default function ProfilePage() {
                   label="Profession"
                   value={formData.profession || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('profession', val)}
+                  onChange={(val: string) => handleChange('profession', val)}
                   icon="💼"
                 />
 
@@ -283,7 +283,7 @@ export default function ProfilePage() {
                   label="Years of Experience"
                   value={formData.experience_years || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('experience_years', val)}
+                  onChange={(val: string) => handleChange('experience_years', val)}
                   icon="📅"
                 />
 
@@ -291,7 +291,7 @@ export default function ProfilePage() {
                   label="LinkedIn URL"
                   value={formData.linkedin_url || ''}
                   editMode={editMode}
-                  onChange={(val) => handleChange('linkedin_url', val)}
+                  onChange={(val: string) => handleChange('linkedin_url', val)}
                   placeholder="https://linkedin.com/in/yourprofile"
                   icon="🔗"
                 />
