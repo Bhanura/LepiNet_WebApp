@@ -9,6 +9,7 @@ type RecordWithStats = {
   predicted_species_name: string;
   final_species_name: string;
   predicted_confidence: number;
+  user_action: string;
   user_id: string;
   created_at: string;
   review_count: number;
@@ -24,9 +25,13 @@ export default function RecordsGallery() {
   const [filteredRecords, setFilteredRecords] = useState<RecordWithStats[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Filter States
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState<string>('all');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [userAction, setUserAction] = useState('ALL');
+  const [confidenceLevel, setConfidenceLevel] = useState('ALL');
+  const [reviewStatus, setReviewStatus] = useState('ALL');
+  const [sortOrder, setSortOrder] = useState<'DESC' | 'ASC'>('DESC');
   const [viewMode, setViewMode] = useState<'all' | 'mine'>('all');
 
   const supabase = createBrowserClient(
@@ -36,11 +41,11 @@ export default function RecordsGallery() {
 
   useEffect(() => {
     fetchRecords();
-  }, []);
+  }, [sortOrder]);
 
   useEffect(() => {
     filterRecords();
-  }, [searchTerm, dateFilter, statusFilter, viewMode, records]);
+  }, [searchTerm, userAction, confidenceLevel, reviewStatus, sortOrder, viewMode, records]);
 
   const fetchRecords = async () => {
     // Get current user
@@ -51,7 +56,7 @@ export default function RecordsGallery() {
     const { data: allRecords } = await supabase
       .from('ai_logs')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: sortOrder === 'ASC' });
 
     if (allRecords) {
       // Fetch review counts and species details for each record
@@ -92,6 +97,13 @@ export default function RecordsGallery() {
   const filterRecords = () => {
     let filtered = [...records];
 
+    // Sort order
+    filtered.sort((a, b) => {
+      const dateA = new Date(a.created_at).getTime();
+      const dateB = new Date(b.created_at).getTime();
+      return sortOrder === 'DESC' ? dateB - dateA : dateA - dateB;
+    });
+
     // View mode filter (all vs my records)
     if (viewMode === 'mine' && currentUser) {
       filtered = filtered.filter(r => r.user_id === currentUser.id);
@@ -105,43 +117,38 @@ export default function RecordsGallery() {
       );
     }
 
-    // Date filter
-    if (dateFilter !== 'all') {
-      const now = new Date();
-      const filterDate = new Date();
-      
-      switch (dateFilter) {
-        case 'today':
-          filterDate.setHours(0, 0, 0, 0);
-          break;
-        case 'week':
-          filterDate.setDate(now.getDate() - 7);
-          break;
-        case 'month':
-          filterDate.setMonth(now.getMonth() - 1);
-          break;
-        case 'year':
-          filterDate.setFullYear(now.getFullYear() - 1);
-          break;
-      }
-      
-      if (dateFilter !== 'all') {
-        filtered = filtered.filter(r => new Date(r.created_at) >= filterDate);
-      }
+    // User Action filter
+    if (userAction !== 'ALL') {
+      filtered = filtered.filter(r => r.user_action === userAction);
     }
 
-    // Status filter
-    if (statusFilter === 'verified') {
-      filtered = filtered.filter(r => r.final_species_name);
-    } else if (statusFilter === 'unverified') {
-      filtered = filtered.filter(r => !r.final_species_name);
-    } else if (statusFilter === 'reviewed') {
-      filtered = filtered.filter(r => r.review_count > 0);
-    } else if (statusFilter === 'unreviewed') {
+    // AI Confidence filter
+    if (confidenceLevel === 'HIGH') {
+      filtered = filtered.filter(r => r.predicted_confidence >= 0.9);
+    } else if (confidenceLevel === 'MEDIUM') {
+      filtered = filtered.filter(r => r.predicted_confidence >= 0.75 && r.predicted_confidence < 0.9);
+    } else if (confidenceLevel === 'LOW') {
+      filtered = filtered.filter(r => r.predicted_confidence >= 0.5 && r.predicted_confidence < 0.75);
+    } else if (confidenceLevel === 'VERY_LOW') {
+      filtered = filtered.filter(r => r.predicted_confidence < 0.5);
+    }
+
+    // Review Status filter
+    if (reviewStatus === 'PENDING_REVIEW') {
       filtered = filtered.filter(r => r.review_count === 0);
+    } else if (reviewStatus === 'REVIEWED') {
+      filtered = filtered.filter(r => r.review_count > 0);
     }
 
     setFilteredRecords(filtered);
+  };
+
+  const resetFilters = () => {
+    setSearchTerm('');
+    setUserAction('ALL');
+    setConfidenceLevel('ALL');
+    setReviewStatus('ALL');
+    setSortOrder('DESC');
   };
 
   if (loading) return <div className="p-10 text-center">Loading Records...</div>;
@@ -185,53 +192,101 @@ export default function RecordsGallery() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {/* Search */}
-            <input 
-              type="text" 
-              placeholder="Search species..." 
-              className="p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+        <div className="bg-white p-6 rounded-xl shadow-md border border-gray-200 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            
+            {/* 1. Search */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                🔍 Search Species
+              </label>
+              <input 
+                type="text" 
+                placeholder="Search species..." 
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
 
-            {/* Date Filter */}
-            <select 
-              className="p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-            >
-              <option value="all">All Time</option>
-              <option value="today">Today</option>
-              <option value="week">Past Week</option>
-              <option value="month">Past Month</option>
-              <option value="year">Past Year</option>
-            </select>
+            {/* 2. Time Order */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                ⏰ Time Order
+              </label>
+              <select 
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'ASC' | 'DESC')}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="DESC">⬇️ Newest First</option>
+                <option value="ASC">⬆️ Oldest First</option>
+              </select>
+            </div>
 
-            {/* Status Filter */}
-            <select 
-              className="p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="verified">Verified Only</option>
-              <option value="unverified">Unverified Only</option>
-              <option value="reviewed">Has Reviews</option>
-              <option value="unreviewed">No Reviews</option>
-            </select>
+            {/* 3. User Action */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                👤 User Action
+              </label>
+              <select 
+                value={userAction}
+                onChange={(e) => setUserAction(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="ALL">All Actions</option>
+                <option value="ACCEPTED">✅ Accepted</option>
+                <option value="REJECTED">❌ Rejected</option>
+                <option value="PENDING">⏳ Pending</option>
+              </select>
+            </div>
 
-            {/* Clear Filters */}
+            {/* 4. AI Confidence */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                🎯 AI Confidence
+              </label>
+              <select 
+                value={confidenceLevel}
+                onChange={(e) => setConfidenceLevel(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="ALL">All Levels</option>
+                <option value="HIGH">🟢 High (&gt;90%)</option>
+                <option value="MEDIUM">🟡 Medium (75-90%)</option>
+                <option value="LOW">🟠 Low (50-75%)</option>
+                <option value="VERY_LOW">🔴 Very Low (&lt;50%)</option>
+              </select>
+            </div>
+
+            {/* 5. Review Status */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                📋 Review Status
+              </label>
+              <select 
+                value={reviewStatus}
+                onChange={(e) => setReviewStatus(e.target.value)}
+                className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              >
+                <option value="ALL">All Records</option>
+                <option value="PENDING_REVIEW">⏳ Pending Review</option>
+                <option value="REVIEWED">✅ Reviewed</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Reset Button & Count */}
+          <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
+            <p className="text-sm text-gray-600">
+              Showing <span className="font-bold text-[#134a86]">{filteredRecords.length}</span> of <span className="font-bold">{records.length}</span> records
+            </p>
             <button 
-              onClick={() => {
-                setSearchTerm('');
-                setDateFilter('all');
-                setStatusFilter('all');
-              }}
-              className="p-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+              onClick={resetFilters}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2 px-4 py-2 hover:bg-blue-50 rounded-lg transition"
             >
-              Clear Filters
+              <span>🔄</span>
+              <span>Reset All Filters</span>
             </button>
           </div>
         </div>

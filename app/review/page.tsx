@@ -19,7 +19,13 @@ type LogEntry = {
 export default function ReviewQueue() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('ALL'); // ALL, ACCEPTED, REJECTED, PENDING
+  
+  // Filter States
+  const [userAction, setUserAction] = useState('ALL'); // ALL, ACCEPTED, REJECTED, PENDING
+  const [confidenceLevel, setConfidenceLevel] = useState('ALL'); // ALL, HIGH, MEDIUM, LOW, VERY_LOW
+  const [reviewStatus, setReviewStatus] = useState('ALL'); // ALL, PENDING_REVIEW, REVIEWED
+  const [sortOrder, setSortOrder] = useState<'DESC' | 'ASC'>('DESC'); // Newest first by default
+  
   const router = useRouter();
 
   const supabase = createBrowserClient(
@@ -29,7 +35,7 @@ export default function ReviewQueue() {
 
   useEffect(() => {
     fetchQueue();
-  }, [filter]);
+  }, [userAction, confidenceLevel, reviewStatus, sortOrder]);
 
   const fetchQueue = async () => {
     setLoading(true);
@@ -49,14 +55,35 @@ export default function ReviewQueue() {
       return router.push('/');
     }
 
-    // 2. Fetch Logs based on filter
+    // 2. Build query with all filters
     let query = supabase
       .from('ai_logs')
-      .select('id, image_url, predicted_id, predicted_confidence, user_action, final_species_name, created_at')
-      .order('created_at', { ascending: false });
+      .select(`
+        id, 
+        image_url, 
+        predicted_id, 
+        predicted_confidence, 
+        user_action, 
+        final_species_name, 
+        created_at,
+        expert_reviews(id)
+      `)
+      .order('created_at', { ascending: sortOrder === 'ASC' });
 
-    if (filter !== 'ALL') {
-      query = query.eq('user_action', filter);
+    // Filter: User Action
+    if (userAction !== 'ALL') {
+      query = query.eq('user_action', userAction);
+    }
+
+    // Filter: AI Confidence Level
+    if (confidenceLevel === 'HIGH') {
+      query = query.gte('predicted_confidence', 0.9);
+    } else if (confidenceLevel === 'MEDIUM') {
+      query = query.gte('predicted_confidence', 0.75).lt('predicted_confidence', 0.9);
+    } else if (confidenceLevel === 'LOW') {
+      query = query.gte('predicted_confidence', 0.5).lt('predicted_confidence', 0.75);
+    } else if (confidenceLevel === 'VERY_LOW') {
+      query = query.lt('predicted_confidence', 0.5);
     }
 
     const { data, error } = await query;
@@ -64,30 +91,126 @@ export default function ReviewQueue() {
     if (error) {
       console.error('Error fetching queue:', error.message || error);
       setLogs([]);
-    } else {
-      setLogs(data || []);
+      setLoading(false);
+      return;
     }
-    
+
+    // Filter: Review Status (client-side filtering after fetch)
+    let filteredData = data || [];
+    if (reviewStatus === 'PENDING_REVIEW') {
+      filteredData = filteredData.filter((log: any) => !log.expert_reviews || log.expert_reviews.length === 0);
+    } else if (reviewStatus === 'REVIEWED') {
+      filteredData = filteredData.filter((log: any) => log.expert_reviews && log.expert_reviews.length > 0);
+    }
+
+    setLogs(filteredData);
     setLoading(false);
+  };
+
+  const resetFilters = () => {
+    setUserAction('ALL');
+    setConfidenceLevel('ALL');
+    setReviewStatus('ALL');
+    setSortOrder('DESC');
   };
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-7xl mx-auto">
-        <div className="flex justify-between items-center mb-8">
+        {/* Header */}
+        <div className="mb-6">
           <h1 className="text-3xl font-bold text-[#134a86]">Expert Review Queue</h1>
-          
-          {/* Filter Dropdown */}
-          <select 
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#134a86]"
-          >
-            <option value="ALL">All Records</option>
-            <option value="ACCEPTED">User Accepted</option>
-            <option value="REJECTED">User Rejected</option>
-            <option value="PENDING">Pending Action</option>
-          </select>
+          <p className="text-gray-600 mt-2">Filter and review AI predictions</p>
+        </div>
+
+        {/* Filter Panel */}
+        <div className="bg-white p-6 rounded-xl shadow-md mb-6 border border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            {/* 1. Time Order */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                ⏰ Time Order
+              </label>
+              <select 
+                value={sortOrder}
+                onChange={(e) => setSortOrder(e.target.value as 'ASC' | 'DESC')}
+                className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#134a86] focus:border-[#134a86]"
+              >
+                <option value="DESC">⬇️ Newest First</option>
+                <option value="ASC">⬆️ Oldest First</option>
+              </select>
+            </div>
+
+            {/* 2. User Action */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                👤 User Action
+              </label>
+              <select 
+                value={userAction}
+                onChange={(e) => setUserAction(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#134a86] focus:border-[#134a86]"
+              >
+                <option value="ALL">All Actions</option>
+                <option value="ACCEPTED">✅ Accepted</option>
+                <option value="REJECTED">❌ Rejected</option>
+                <option value="PENDING">⏳ Pending</option>
+              </select>
+            </div>
+
+            {/* 3. AI Confidence Level */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                🎯 AI Confidence
+              </label>
+              <select 
+                value={confidenceLevel}
+                onChange={(e) => setConfidenceLevel(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#134a86] focus:border-[#134a86]"
+              >
+                <option value="ALL">All Levels</option>
+                <option value="HIGH">🟢 High (&gt;90%)</option>
+                <option value="MEDIUM">🟡 Medium (75-90%)</option>
+                <option value="LOW">🟠 Low (50-75%)</option>
+                <option value="VERY_LOW">🔴 Very Low (&lt;50%)</option>
+              </select>
+            </div>
+
+            {/* 4. Review Status */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                📋 Review Status
+              </label>
+              <select 
+                value={reviewStatus}
+                onChange={(e) => setReviewStatus(e.target.value)}
+                className="w-full bg-white border border-gray-300 text-gray-700 py-2 px-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#134a86] focus:border-[#134a86]"
+              >
+                <option value="ALL">All Records</option>
+                <option value="PENDING_REVIEW">⏳ Pending Review</option>
+                <option value="REVIEWED">✅ Reviewed</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Reset Button */}
+          <div className="mt-4 flex justify-end">
+            <button 
+              onClick={resetFilters}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2 px-4 py-2 hover:bg-blue-50 rounded-lg transition"
+            >
+              <span>🔄</span>
+              <span>Reset All Filters</span>
+            </button>
+          </div>
+
+          {/* Results Count */}
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <p className="text-sm text-gray-600">
+              Showing <span className="font-bold text-[#134a86]">{logs.length}</span> records
+            </p>
+          </div>
         </div>
 
         {loading ? (
