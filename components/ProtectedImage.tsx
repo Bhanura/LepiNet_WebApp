@@ -4,20 +4,32 @@ type Props = {
   src: string;
   alt: string;
   authorName: string;
+  objectFit?: 'cover' | 'contain';
 };
 
-export default function ProtectedImage({ src, alt, authorName }: Props) {
+export default function ProtectedImage({ src, alt, authorName, objectFit = 'cover' }: Props) {
   // We use the API route for the "Download" button to give them the watermarked version
   const downloadLink = `/api/watermark?url=${encodeURIComponent(src)}&author=${encodeURIComponent(authorName)}`;
 
   return (
-    <div className="relative group inline-block overflow-hidden rounded-lg shadow-lg">
+    <div className="relative group w-full h-full flex items-center justify-center bg-black">
       {/* 1. The Image (Prevent right click) */}
-      <div onContextMenu={(e) => e.preventDefault()}>
+      <div onContextMenu={(e) => e.preventDefault()} className="w-full h-full flex items-center justify-center">
         <img 
             src={src} 
             alt={alt} 
-            className="w-full h-auto object-cover"
+            style={{
+              display: 'block',
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: objectFit === 'contain' ? 'auto' : '100%',
+              height: objectFit === 'contain' ? 'auto' : '100%',
+              objectFit: objectFit
+            }}
+            onError={(e) => {
+              console.error('Image failed to load:', src);
+              e.currentTarget.style.display = 'none';
+            }}
         />
       </div>
 

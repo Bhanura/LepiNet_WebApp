@@ -84,6 +84,7 @@ export default function ReviewDetail() {
       }
       
       console.log('Log Data:', logData);
+      console.log('Image URL:', logData?.image_url);
       setLog(logData);
 
       // 2. Load Predicted Species Details from species table
@@ -212,7 +213,9 @@ export default function ReviewDetail() {
     }
   };
 
-  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
 
   const openViewer = () => {
     setIsViewerOpen(true);
@@ -273,15 +276,19 @@ export default function ReviewDetail() {
         {/* LEFT PANEL: Image Viewer with AI Details - 50% */}
         <div className="w-1/2 p-6 flex flex-col gap-6 overflow-y-auto" style={{ maxHeight: '100vh' }}>
         {/* Image */}
-        <div className="bg-black rounded-xl overflow-hidden shadow-xl relative group cursor-pointer" onClick={openViewer}>
-          <div className="relative w-full" style={{ height: '55vh' }}>
-            <ProtectedImage src={log.image_url} alt="Specimen" authorName="Contributor" />
-          </div>
-          {/* Click to Zoom Overlay */}
-          <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white px-4 py-2 rounded-lg shadow-lg">
-              <p className="text-sm font-bold text-gray-800">🔍 Click to Zoom & Examine</p>
-            </div>
+        <div 
+          className="bg-black rounded-xl overflow-hidden shadow-lg cursor-pointer hover:ring-4 hover:ring-blue-400 transition-all relative group"
+          onClick={openViewer}
+        >
+          <ProtectedImage 
+            src={log?.image_url || ''} 
+            alt="Butterfly specimen" 
+            authorName="LepiNet User"
+            objectFit="contain"
+          />
+          {/* Hover hint */}
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black to-transparent opacity-0 group-hover:opacity-100 transition-opacity py-6 flex items-end justify-center pointer-events-none">
+            <span className="text-white text-sm font-medium">🔍 Click to view full size</span>
           </div>
         </div>
 
@@ -771,35 +778,55 @@ export default function ReviewDetail() {
           {/* Zoom Instructions */}
           <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-white bg-opacity-90 rounded-lg shadow-lg px-6 py-3 z-50">
             <p className="text-sm text-gray-800 font-medium">
-              <span className="font-bold">Keyboard:</span> + (Zoom In) | - (Zoom Out) | 0 (Reset) | ESC (Close)
-              {zoomLevel > 1 && <span className="ml-4 font-bold text-blue-600">| Drag to Pan</span>}
+              <span className="font-bold">🖱️ Mouse Wheel:</span> Zoom In/Out |
+              <span className="font-bold ml-2">⌨️ Keyboard:</span> + / - (Zoom) | 0 (Reset) | ESC (Close)
+              {zoomLevel > 1 && <span className="ml-2 font-bold text-blue-600">| 🖐️ Drag to Pan</span>}
             </p>
           </div>
 
           {/* Image Container */}
           <div 
-            className="relative overflow-hidden cursor-move"
-            style={{ width: '90vw', height: '90vh' }}
+            className="relative overflow-hidden flex items-center justify-center bg-black"
+            style={{ 
+              width: '85vw', 
+              height: '85vh', 
+              cursor: zoomLevel > 1 ? (isDragging ? 'grabbing' : 'grab') : 'default'
+            }}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={handleMouseDown}
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUp}
             onMouseLeave={handleMouseUp}
+            onWheel={(e) => {
+              e.preventDefault();
+              if (e.deltaY < 0) handleZoomIn();
+              else handleZoomOut();
+            }}
           >
             <div
               style={{
                 transform: `scale(${zoomLevel}) translate(${imagePosition.x / zoomLevel}px, ${imagePosition.y / zoomLevel}px)`,
-                transition: isDragging ? 'none' : 'transform 0.2s ease-out',
+                transition: isDragging ? 'none' : 'transform 0.3s ease-out',
                 transformOrigin: 'center center',
-                width: '100%',
-                height: '100%',
-                position: 'relative'
+                maxWidth: '100%',
+                maxHeight: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
               }}
             >
-              <ProtectedImage 
-                src={log.image_url} 
-                alt="Specimen - Detailed View" 
-                authorName="Contributor"
+              <img
+                src={log.image_url}
+                alt="Specimen - Detailed View"
+                onContextMenu={(e) => e.preventDefault()}
+                style={{
+                  maxWidth: '100%',
+                  maxHeight: '85vh',
+                  objectFit: 'contain',
+                  display: 'block',
+                  userSelect: 'none'
+                }}
+                draggable={false}
               />
             </div>
           </div>
