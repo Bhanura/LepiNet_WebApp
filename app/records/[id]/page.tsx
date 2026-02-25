@@ -17,6 +17,7 @@ export default function RecordDetail() {
   const [commentText, setCommentText] = useState<{[key: string]: string}>({});
   const [commentingOn, setCommentingOn] = useState<string | null>(null);
   const [showCommentsFor, setShowCommentsFor] = useState<string | null>(null);
+  const [agreesWithReview, setAgreesWithReview] = useState<{[key: string]: boolean | null}>({});
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,6 +59,7 @@ export default function RecordDetail() {
           .select(`
             id,
             comment_text,
+            agrees_with_review,
             created_at,
             commenter:users!commenter_id (id, first_name, last_name, profession, profile_photo_url)
           `)
@@ -148,10 +150,20 @@ export default function RecordDetail() {
     
     const comment = commentText[reviewId]?.trim();
     if (!comment) return alert("Please enter a comment");
+    
+    // Validate agrees_with_review is selected
+    if (agreesWithReview[reviewId] === null || agreesWithReview[reviewId] === undefined) {
+      return alert("Please select Agree or Disagree");
+    }
 
     const { error } = await supabase
       .from('review_comments')
-      .insert({ review_id: reviewId, commenter_id: currentUser.id, comment_text: comment });
+      .insert({ 
+        review_id: reviewId, 
+        commenter_id: currentUser.id, 
+        comment_text: comment,
+        agrees_with_review: agreesWithReview[reviewId]
+      });
 
     if (error) {
       console.error('Comment error:', error);
@@ -159,8 +171,51 @@ export default function RecordDetail() {
     } else {
       alert("Comment posted successfully!");
       setCommentText(prev => ({ ...prev, [reviewId]: '' }));
+      setAgreesWithReview(prev => ({ ...prev, [reviewId]: null }));
       setCommentingOn(null);
       // Refresh reviews to show new comment count
+      await fetchReviews();
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string, commenterId: string) => {
+    if (!currentUser) return alert("Please login");
+    if (currentUser.id !== commenterId) return alert("You can only delete your own comments");
+    
+    if (!confirm("Are you sure you want to delete this comment?")) return;
+
+    const { error } = await supabase
+      .from('review_comments')
+      .delete()
+      .eq('id', commentId)
+      .eq('commenter_id', currentUser.id); // Extra security check
+
+    if (error) {
+      console.error('Delete comment error:', error);
+      alert("Failed to delete comment: " + error.message);
+    } else {
+      alert("Comment deleted successfully!");
+      await fetchReviews();
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string, reviewerId: string) => {
+    if (!currentUser) return alert("Please login");
+    if (currentUser.id !== reviewerId) return alert("You can only delete your own reviews");
+    
+    if (!confirm("Are you sure you want to delete this review? All comments on it will also be deleted.")) return;
+
+    const { error } = await supabase
+      .from('expert_reviews')
+      .delete()
+      .eq('id', reviewId)
+      .eq('reviewer_id', currentUser.id); // Extra security check
+
+    if (error) {
+      console.error('Delete review error:', error);
+      alert("Failed to delete review: " + error.message);
+    } else {
+      alert("Review deleted successfully!");
       await fetchReviews();
     }
   };
@@ -285,9 +340,21 @@ export default function RecordDetail() {
                          <p className="text-xs text-gray-500">{review.reviewer?.profession}</p>
                        </div>
                     </div>
-                    {review.is_new_discovery && (
-                      <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-bold">🌟 Discovery</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {review.is_new_discovery && (
+                        <span className="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded font-bold">🌟 Discovery</span>
+                      )}
+                      {/* Delete button - only shown to review owner */}
+                      {currentUser?.id === review.reviewer_id && (
+                        <button
+                          onClick={() => handleDeleteReview(review.id, review.reviewer_id)}
+                          className="text-red-600 hover:text-red-800 hover:bg-red-50 p-1.5 rounded transition-colors"
+                          title="Delete your review"
+                        >
+                          🗑️
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   <div className="mb-3">
@@ -329,6 +396,37 @@ export default function RecordDetail() {
                   {/* Comment Form */}
                   {commentingOn === review.id && (
                     <div className="mt-4 pt-4 border-t border-gray-200">
+                      {/* Agreement Toggle - Required */}
+                      <div className="mb-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Your Position: <span className="text-red-600">*</span>
+                        </label>
+                        <div className="flex gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setAgreesWithReview(prev => ({ ...prev, [review.id]: true }))}
+                            className={`flex-1 px-4 py-2 rounded-lg border-2 font-medium transition-all ${
+                              agreesWithReview[review.id] === true
+                                ? 'bg-green-600 text-white border-green-600 shadow-lg'
+                                : 'bg-white text-gray-700 border-gray-300 hover:border-green-400'
+                            }`}
+                          >
+                            ✅ Agree with Review
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAgreesWithReview(prev => ({ ...prev, [review.id]: false }))}
+                            className={`flex-1 px-4 py-2 rounded-lg border-2 font-medium transition-all ${
+                              agreesWithReview[review.id] === false
+                                ? 'bg-red-600 text-white border-red-600 shadow-lg'
+                                : 'bg-white text-gray-700 border-gray-300 hover:border-red-400'
+                            }`}
+                          >
+                            ❌ Disagree
+                          </button>
+                        </div>
+                      </div>
+                      
                       <textarea
                         value={commentText[review.id] || ''}
                         onChange={(e) => setCommentText(prev => ({ ...prev, [review.id]: e.target.value }))}
@@ -347,6 +445,7 @@ export default function RecordDetail() {
                           onClick={() => {
                             setCommentingOn(null);
                             setCommentText(prev => ({ ...prev, [review.id]: '' }));
+                            setAgreesWithReview(prev => ({ ...prev, [review.id]: null }));
                           }}
                           className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm font-medium"
                         >
@@ -373,9 +472,22 @@ export default function RecordDetail() {
                         const commentId = String(comment.id || Math.random());
                         const commenterProfilePhoto = comment.commenter?.profile_photo_url;
                         const commenterId = comment.commenter?.id;
+                        const agreesWithReview = comment.agrees_with_review;
                         
                         return (
                           <div key={commentId} className="bg-gray-50 p-3 rounded-lg">
+                            {/* Agreement Badge - Always shown */}
+                            <div className="mb-2">
+                              {agreesWithReview === true ? (
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-semibold bg-green-100 text-green-800 rounded">
+                                  ✅ Agrees with Review
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-1 text-xs font-semibold bg-red-100 text-red-800 rounded">
+                                  ❌ Disagrees
+                                </span>
+                              )}
+                            </div>
                             <div className="flex items-start gap-2">
                               {commenterProfilePhoto ? (
                                 <img
@@ -389,15 +501,27 @@ export default function RecordDetail() {
                                 </div>
                               )}
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <Link
-                                    href={`/profile/${commenterId}`}
-                                    className="font-semibold text-sm text-gray-800 hover:text-green-600 transition-colors cursor-pointer"
-                                  >
-                                    {commenterName} {commenterLastName}
-                                  </Link>
-                                  <span className="text-xs text-gray-500">•</span>
-                                  <p className="text-xs text-gray-500">{commenterProfession}</p>
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <div className="flex items-center gap-2">
+                                    <Link
+                                      href={`/profile/${commenterId}`}
+                                      className="font-semibold text-sm text-gray-800 hover:text-green-600 transition-colors cursor-pointer"
+                                    >
+                                      {commenterName} {commenterLastName}
+                                    </Link>
+                                    <span className="text-xs text-gray-500">•</span>
+                                    <p className="text-xs text-gray-500">{commenterProfession}</p>
+                                  </div>
+                                  {/* Delete button - only shown to comment owner */}
+                                  {currentUser?.id === commenterId && (
+                                    <button
+                                      onClick={() => handleDeleteComment(commentId, commenterId)}
+                                      className="text-red-600 hover:text-red-800 hover:bg-red-100 px-2 py-0.5 rounded text-xs transition-colors flex-shrink-0"
+                                      title="Delete your comment"
+                                    >
+                                      🗑️ Delete
+                                    </button>
+                                  )}
                                 </div>
                                 <p className="text-sm text-gray-700">{commentText}</p>
                                 <p className="text-xs text-gray-400 mt-1">
