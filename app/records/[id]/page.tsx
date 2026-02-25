@@ -364,7 +364,7 @@ export default function RecordDetail() {
                   </div>
 
                   <p className="text-gray-700 text-sm mb-4 bg-gray-50 p-3 rounded">
-                    "{review.comments || "No comments provided."}"
+                    "{review.identification_notes || "No comments provided."}"
                   </p>
 
                   <div className="flex items-center gap-4 text-sm text-gray-500">

@@ -373,8 +373,8 @@ export default function UserDashboard() {
                             {review.confidence_level}
                           </span>
                         </div>
-                        {review.comments && (
-                          <p className="text-sm text-gray-600 mb-2">{review.comments}</p>
+                        {review.identification_notes && (
+                          <p className="text-sm text-gray-600 mb-2">{review.identification_notes}</p>
                         )}
                         <div className="flex gap-2 text-xs text-gray-500">
                           <span>AI Agreement: {review.agreed_with_ai ? 'Yes' : 'No'}</span>
