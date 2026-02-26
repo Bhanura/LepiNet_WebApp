@@ -16,16 +16,30 @@ export async function GET(req: NextRequest) {
     const arrayBuffer = await response.arrayBuffer();
     const inputBuffer = Buffer.from(arrayBuffer);
 
-    // 2. Create the Watermark (SVG)
-    // This draws semi-transparent text
+    // 2. Create the Watermark (SVG) - More visible version
     const svgWatermark = `
-      <svg width="500" height="100">
+      <svg width="600" height="120">
+        <defs>
+          <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+            <feOffset dx="2" dy="2" result="offsetblur"/>
+            <feComponentTransfer>
+              <feFuncA type="linear" slope="0.8"/>
+            </feComponentTransfer>
+            <feMerge> 
+              <feMergeNode/>
+              <feMergeNode in="SourceGraphic"/> 
+            </feMerge>
+          </filter>
+        </defs>
         <style>
-          .title { fill: rgba(255, 255, 255, 0.5); font-size: 30px; font-weight: bold; font-family: sans-serif; }
-          .subtitle { fill: rgba(255, 255, 255, 0.3); font-size: 14px; font-family: sans-serif; }
+          .bg-rect { fill: rgba(0, 0, 0, 0.7); }
+          .title { fill: rgba(255, 255, 255, 0.95); font-size: 36px; font-weight: bold; font-family: Arial, sans-serif; filter: url(#shadow); }
+          .subtitle { fill: rgba(255, 255, 255, 0.85); font-size: 18px; font-family: Arial, sans-serif; filter: url(#shadow); }
         </style>
+        <rect x="0" y="0" width="600" height="120" class="bg-rect" rx="8"/>
         <text x="20" y="50" class="title">LepiNet</text>
-        <text x="20" y="80" class="subtitle">© ${authorName}</text>
+        <text x="20" y="85" class="subtitle">© ${authorName}</text>
       </svg>
     `;
 

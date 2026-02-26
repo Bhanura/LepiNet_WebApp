@@ -95,8 +95,28 @@ export default function RecordDetail() {
       }
 
       // 1. Fetch Record
-      const { data: rec } = await supabase.from('ai_logs').select('*').eq('id', id).single();
-      setRecord(rec);
+      const { data: rec, error: recError } = await supabase
+        .from('ai_logs')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (recError) {
+        console.error('Error fetching record:', recError);
+      }
+      
+      // Fetch user data separately
+      let userData = null;
+      if (rec?.user_id) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, profile_photo_url')
+          .eq('id', rec.user_id)
+          .single();
+        userData = user;
+      }
+      
+      setRecord({ ...rec, users: userData });
 
       // 1.5 Fetch predicted species details
       if (rec?.predicted_id) {
@@ -240,7 +260,11 @@ export default function RecordDetail() {
         {/* Left: Image */}
         <div className="space-y-6">
           <div className="bg-black rounded-xl overflow-hidden shadow-lg">
-             <ProtectedImage src={record.image_url} alt="Butterfly" authorName="LepiNet User" />
+             <ProtectedImage 
+               src={record.image_url} 
+               alt="Butterfly" 
+               authorName={record.users ? `${record.users.first_name} ${record.users.last_name}` : 'LepiNet User'} 
+             />
           </div>
           
           <div className="bg-white p-6 rounded-xl shadow-sm">

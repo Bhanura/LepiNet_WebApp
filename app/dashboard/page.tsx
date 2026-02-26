@@ -260,11 +260,18 @@ export default function UserDashboard() {
                       href={`/records/${record.id}`}
                       className="border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition"
                     >
-                      <img 
-                        src={record.image_url} 
-                        alt="Butterfly" 
-                        className="w-full h-40 object-cover bg-gray-200"
-                      />
+                      <div 
+                        className="w-full h-40 bg-gray-200 relative"
+                        onContextMenu={(e) => e.preventDefault()}
+                      >
+                        <img 
+                          src={record.image_url} 
+                          alt="Butterfly" 
+                          className="w-full h-full object-cover"
+                          onContextMenu={(e) => e.preventDefault()}
+                          draggable={false}
+                        />
+                      </div>
                       <div className="p-3">
                         <p className="font-medium text-gray-800 truncate">
                           {record.final_species_name || record.predicted_species_name || 'Unknown'}
@@ -298,11 +305,16 @@ export default function UserDashboard() {
                     href={`/records/${record.id}`}
                     className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition border border-gray-200"
                   >
-                    <div className="relative h-48 bg-gray-200">
+                    <div 
+                      className="relative h-48 bg-gray-200"
+                      onContextMenu={(e) => e.preventDefault()}
+                    >
                       <img 
                         src={record.image_url} 
                         alt="Butterfly" 
                         className="w-full h-full object-cover"
+                        onContextMenu={(e) => e.preventDefault()}
+                        draggable={false}
                       />
                       <div className="absolute top-2 right-2 px-2 py-1 rounded text-xs font-bold bg-white/90 shadow-sm">
                         {record.final_species_name ? '✅ Verified' : '🟠 Pending'}
@@ -348,11 +360,18 @@ export default function UserDashboard() {
                     <div className="flex gap-4">
                       {review.ai_log?.image_url && (
                         <Link href={`/records/${review.ai_log.id}`}>
-                          <img 
-                            src={review.ai_log.image_url} 
-                            alt="Butterfly" 
-                            className="w-24 h-24 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                          />
+                          <div 
+                            className="w-24 h-24 rounded-lg overflow-hidden cursor-pointer hover:opacity-80"
+                            onContextMenu={(e) => e.preventDefault()}
+                          >
+                            <img 
+                              src={review.ai_log.image_url} 
+                              alt="Butterfly" 
+                              className="w-full h-full object-cover"
+                              onContextMenu={(e) => e.preventDefault()}
+                              draggable={false}
+                            />
+                          </div>
                         </Link>
                       )}
                       <div className="flex-1">

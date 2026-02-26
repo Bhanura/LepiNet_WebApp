@@ -83,9 +83,20 @@ export default function ReviewDetail() {
         alert(`Failed to load record: ${logError.message || 'Unknown error'}`);
       }
       
+      // Fetch user data separately
+      let userData = null;
+      if (logData?.user_id) {
+        const { data: user } = await supabase
+          .from('users')
+          .select('id, first_name, last_name, profile_photo_url')
+          .eq('id', logData.user_id)
+          .single();
+        userData = user;
+      }
+      
       console.log('Log Data:', logData);
       console.log('Image URL:', logData?.image_url);
-      setLog(logData);
+      setLog({ ...logData, users: userData });
 
       // 2. Load Predicted Species Details from species table
       if (logData?.predicted_id) {
@@ -283,7 +294,7 @@ export default function ReviewDetail() {
           <ProtectedImage 
             src={log?.image_url || ''} 
             alt="Butterfly specimen" 
-            authorName="LepiNet User"
+            authorName={log?.users ? `${log.users.first_name} ${log.users.last_name}` : 'LepiNet User'}
             objectFit="contain"
           />
           {/* Hover hint */}

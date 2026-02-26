@@ -14,6 +14,12 @@ type LogEntry = {
   user_action: string;
   final_species_name: string | null;
   created_at: string;
+  user_id: string;
+  users?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
 };
 
 export default function ReviewQueue() {
@@ -66,6 +72,7 @@ export default function ReviewQueue() {
         user_action, 
         final_species_name, 
         created_at,
+        user_id,
         expert_reviews(id)
       `)
       .order('created_at', { ascending: sortOrder === 'ASC' });
@@ -95,8 +102,27 @@ export default function ReviewQueue() {
       return;
     }
 
+    // Fetch user data for all logs
+    let logsWithUsers = data || [];
+    if (logsWithUsers.length > 0) {
+      const userIds = [...new Set(logsWithUsers.map(log => log.user_id).filter(Boolean))];
+      if (userIds.length > 0) {
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, first_name, last_name')
+          .in('id', userIds);
+        
+        // Map users to logs
+        const usersMap = new Map(usersData?.map(u => [u.id, u]) || []);
+        logsWithUsers = logsWithUsers.map(log => ({
+          ...log,
+          users: usersMap.get(log.user_id) || null
+        }));
+      }
+    }
+
     // Filter: Review Status (client-side filtering after fetch)
-    let filteredData = data || [];
+    let filteredData = logsWithUsers || [];
     if (reviewStatus === 'PENDING_REVIEW') {
       filteredData = filteredData.filter((log: any) => !log.expert_reviews || log.expert_reviews.length === 0);
     } else if (reviewStatus === 'REVIEWED') {
@@ -228,7 +254,7 @@ export default function ReviewQueue() {
                   <ProtectedImage 
                     src={log.image_url} 
                     alt={log.final_species_name || log.predicted_id || "Butterfly"} 
-                    authorName="LepiNet User" 
+                    authorName={log.users ? `${log.users.first_name} ${log.users.last_name}` : 'LepiNet User'} 
                   />
                 </div>
                 

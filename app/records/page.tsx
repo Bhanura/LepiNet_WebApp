@@ -306,11 +306,16 @@ export default function RecordsGallery() {
               >
                 <div className="bg-white rounded-xl overflow-hidden shadow-sm hover:shadow-lg transition border border-gray-200">
                   {/* Image */}
-                  <div className="h-56 relative bg-gray-200">
+                  <div 
+                    className="h-56 relative bg-gray-200"
+                    onContextMenu={(e) => e.preventDefault()}
+                  >
                     <img 
                       src={record.image_url} 
                       alt="Butterfly" 
                       className="w-full h-full object-cover"
+                      onContextMenu={(e) => e.preventDefault()}
+                      draggable={false}
                     />
                     
                     {/* Status Badge */}
