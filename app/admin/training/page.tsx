@@ -1,623 +1,779 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { createBrowserClient } from '@supabase/ssr';
+import ProtectedImage from '@/components/ProtectedImage';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type AiLogWithStats = {
+  id: string;
+  user_id: string;
+  image_url: string;
+  predicted_id: string;
+  predicted_confidence: number;
+  final_species_id: string;
+  training_status: 'pending' | 'ready' | 'trained' | 'ignored';
+  created_at: string;
+  predicted_common_name: string;
+  predicted_scientific_name: string;
+  predicted_sinhala_name: string;
+  final_common_name: string;
+  final_scientific_name: string;
+  final_sinhala_name: string;
+  review_count: number;
+  agree_count: number;
+  correct_count: number;
+  unsure_count: number;
+  not_butterfly_count: number;
+  avg_quality_rating: number;
+  species_changed: boolean;
+  uploader_name?: string;
+};
+
+type ReviewWithStats = {
+  review_id: string;
+  ai_log_id: string;
+  reviewer_id: string;
+  verdict: 'AGREE' | 'CORRECT' | 'UNSURE' | 'NOT_BUTTERFLY';
+  identified_species_name: string | null;
+  identification_notes: string | null;
+  image_quality_rating: number;
+  wings_visible: boolean;
+  antennae_visible: boolean;
+  body_visible: boolean;
+  patterns_visible: boolean;
+  is_new_discovery: boolean;
+  created_at: string;
+  comment_count: number;
+  agree_comment_count: number;
+  disagree_comment_count: number;
+  rating_count: number;
+  helpful_count: number;
+  not_helpful_count: number;
+  weighted_score: number;
+  reviewer?: { first_name: string; last_name: string; role: string };
+  comments?: Comment[];
+};
+
+type Comment = {
+  id: string;
+  comment_text: string;
+  agrees_with_review: boolean;
+  created_at: string;
+  commenter?: { first_name: string; last_name: string };
+};
+
+type Filters = {
+  trainingStatus: string;
+  speciesSearch: string;
+  speciesChanged: string;
+  dateFrom: string;
+  dateTo: string;
+  minReviews: string;
+};
+
+// ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function TrainingCurator() {
-  const [candidates, setCandidates] = useState<any[]>([]);
-  const [filteredCandidates, setFilteredCandidates] = useState<any[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'agreed' | 'corrected'>('all');
-  const [filterTrainingStatus, setFilterTrainingStatus] = useState<'pending' | 'ready' | 'trained' | 'ignored' | 'all'>('pending');
-  const [searchSpecies, setSearchSpecies] = useState('');
   const router = useRouter();
-  
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 
-  useEffect(() => {
-    fetchCandidates();
-  }, []);
+  const [records, setRecords] = useState<AiLogWithStats[]>([]);
+  const [filtered, setFiltered] = useState<AiLogWithStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedRecord, setSelectedRecord] = useState<AiLogWithStats | null>(null);
+  const [detailReviews, setDetailReviews] = useState<ReviewWithStats[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<Filters>({
+    trainingStatus: '',
+    speciesSearch: '',
+    speciesChanged: '',
+    dateFrom: '',
+    dateTo: '',
+    minReviews: '',
+  });
 
-  useEffect(() => {
-    applyFilters();
-  }, [candidates, filterStatus, filterTrainingStatus, searchSpecies]);
+  // ─── Fetch Records ──────────────────────────────────────────────────────────
 
-  const applyFilters = () => {
-    let filtered = [...candidates];
-
-    // Filter by training status
-    if (filterTrainingStatus !== 'all') {
-      filtered = filtered.filter(c => c.training_status === filterTrainingStatus);
-    }
-
-    // Filter by status
-    if (filterStatus === 'agreed') {
-      filtered = filtered.filter(c => c.agreed_with_ai);
-    } else if (filterStatus === 'corrected') {
-      filtered = filtered.filter(c => !c.agreed_with_ai);
-    }
-
-    // Filter by species search
-    if (searchSpecies) {
-      filtered = filtered.filter(c => 
-        c.identified_species_name?.toLowerCase().includes(searchSpecies.toLowerCase()) ||
-        c.ai_log?.final_species_name?.toLowerCase().includes(searchSpecies.toLowerCase())
-      );
-    }
-
-    setFilteredCandidates(filtered);
-  };
-
-  const fetchCandidates = async () => {
+  const fetchRecords = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return router.push('/login');
 
-    // Verify admin access
-    const { data: userProfile } = await supabase
+    // Check admin role
+    const { data: userData } = await supabase
       .from('users')
       .select('role')
       .eq('id', user.id)
       .single();
+    if (userData?.role !== 'admin') return router.push('/');
 
-    if (userProfile?.role !== 'admin') {
-      alert('Access Denied: Admin only');
-      router.push('/');
+    const { data, error } = await supabase
+      .from('ai_logs_with_stats')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) { 
+      console.error(error); 
+      setLoading(false); 
+      return; 
+    }
+
+    // Fetch uploader names separately
+    const userIds = [...new Set((data || []).map((r: any) => r.user_id))];
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, first_name, last_name')
+      .in('id', userIds);
+
+    const userMap = new Map((users || []).map((u: any) => [u.id, `${u.first_name} ${u.last_name}`]));
+
+    const enriched = (data || []).map((r: any) => ({
+      ...r,
+      uploader_name: userMap.get(r.user_id) || 'Unknown',
+    }));
+
+    setRecords(enriched);
+    setFiltered(enriched);
+    setLoading(false);
+  }, [router, supabase]);
+
+  useEffect(() => { fetchRecords(); }, [fetchRecords]);
+
+  // ─── Apply Filters ──────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    let result = [...records];
+
+    if (filters.trainingStatus)
+      result = result.filter(r => r.training_status === filters.trainingStatus);
+
+    if (filters.speciesSearch) {
+      const q = filters.speciesSearch.toLowerCase();
+      result = result.filter(r =>
+        r.predicted_common_name?.toLowerCase().includes(q) ||
+        r.final_common_name?.toLowerCase().includes(q) ||
+        r.predicted_scientific_name?.toLowerCase().includes(q) ||
+        r.final_scientific_name?.toLowerCase().includes(q)
+      );
+    }
+
+    if (filters.speciesChanged === 'true')
+      result = result.filter(r => r.species_changed);
+    else if (filters.speciesChanged === 'false')
+      result = result.filter(r => !r.species_changed);
+
+    if (filters.dateFrom)
+      result = result.filter(r => new Date(r.created_at) >= new Date(filters.dateFrom));
+
+    if (filters.dateTo)
+      result = result.filter(r => new Date(r.created_at) <= new Date(filters.dateTo));
+
+    if (filters.minReviews)
+      result = result.filter(r => r.review_count >= parseInt(filters.minReviews));
+
+    setFiltered(result);
+  }, [filters, records]);
+
+  // ─── Status Counts ──────────────────────────────────────────────────────────
+
+  const counts = {
+    pending: records.filter(r => r.training_status === 'pending').length,
+    ready: records.filter(r => r.training_status === 'ready').length,
+    trained: records.filter(r => r.training_status === 'trained').length,
+    ignored: records.filter(r => r.training_status === 'ignored').length,
+  };
+
+  // ─── Status Update ──────────────────────────────────────────────────────────
+
+  const updateStatus = async (id: string, status: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setUpdatingId(id);
+
+    const { error } = await supabase
+      .from('ai_logs')
+      .update({ training_status: status })
+      .eq('id', id);
+
+    if (error) {
+      console.error('Status update error:', error);
+      alert('Failed to update status');
+      setUpdatingId(null);
       return;
     }
 
-    console.log('Fetching expert_reviews...');
+    // Update local state
+    setRecords(prev => prev.map(r => r.id === id ? { ...r, training_status: status as AiLogWithStats['training_status'] } : r));
+    if (selectedRecord?.id === id) {
+      setSelectedRecord(prev => prev ? { ...prev, training_status: status as AiLogWithStats['training_status'] } : null);
+    }
 
-    // Fetch ALL Reviews with ai_logs data (no training status filter on query)
-    const { data, error } = await supabase
-      .from('expert_reviews')
-      .select(`
-        id, 
-        ai_log_id,
-        identified_species_name, 
-        agreed_with_ai, 
-        training_status, 
-        confidence_level,
-        created_at,
-        ai_logs!inner(id, image_url, predicted_id, final_species_name)
-      `)
-      .eq('confidence_level', 'certain')
-      .neq('identified_species_name', 'Not a Butterfly')
+    setUpdatingId(null);
+  };
+
+  // ─── Open Detail ────────────────────────────────────────────────────────────
+
+  const openDetail = async (record: AiLogWithStats) => {
+    setSelectedRecord(record);
+    setDetailLoading(true);
+
+    // Fetch reviews with stats
+    const { data: reviews, error } = await supabase
+      .from('reviews_with_stats')
+      .select('*')
+      .eq('ai_log_id', record.id)
       .order('created_at', { ascending: false });
-    
-    if (error) {
-      console.error('Error fetching candidates:', error);
-      alert('Error loading training candidates: ' + (error.message || 'Unknown error'));
-    } else {
-      console.log('Training candidates fetched:', data);
-      console.log('Number of candidates:', data?.length || 0);
-      
-      // Transform the data to match expected structure
-      const transformedData = data?.map(item => ({
-        ...item,
-        ai_log: item.ai_logs
-      })) || [];
-      
-      setCandidates(transformedData);
-      setFilteredCandidates(transformedData);
+
+    if (error) { 
+      console.error(error); 
+      setDetailLoading(false); 
+      return; 
     }
-    
-    setLoading(false);
+
+    // Fetch reviewer info
+    const reviewerIds = [...new Set((reviews || []).map((r: any) => r.reviewer_id))];
+    const { data: reviewers } = await supabase
+      .from('users')
+      .select('id, first_name, last_name, role')
+      .in('id', reviewerIds);
+
+    const reviewerMap = new Map((reviewers || []).map((u: any) => [u.id, u]));
+
+    // Fetch comments for each review
+    const reviewIds = (reviews || []).map((r: any) => r.review_id);
+    const { data: comments } = await supabase
+      .from('review_comments')
+      .select('id, review_id, comment_text, agrees_with_review, created_at, commenter_id')
+      .in('review_id', reviewIds)
+      .order('created_at', { ascending: true });
+
+    // Fetch commenter info
+    const commenterIds = [...new Set((comments || []).map((c: any) => c.commenter_id))];
+    const { data: commenters } = await supabase
+      .from('users')
+      .select('id, first_name, last_name')
+      .in('id', commenterIds);
+
+    const commenterMap = new Map((commenters || []).map((u: any) => [u.id, u]));
+
+    // Map comments to reviews
+    const commentsByReview = new Map<string, Comment[]>();
+    (comments || []).forEach((c: any) => {
+      if (!commentsByReview.has(c.review_id)) commentsByReview.set(c.review_id, []);
+      commentsByReview.get(c.review_id)!.push({
+        ...c,
+        commenter: commenterMap.get(c.commenter_id),
+      });
+    });
+
+    const enriched = (reviews || []).map((r: any) => ({
+      ...r,
+      reviewer: reviewerMap.get(r.reviewer_id),
+      comments: commentsByReview.get(r.review_id) || [],
+    }));
+
+    setDetailReviews(enriched);
+    setDetailLoading(false);
   };
 
-  const toggleSelection = (id: string) => {
-    const newSet = new Set(selectedIds);
-    if (newSet.has(id)) newSet.delete(id);
-    else newSet.add(id);
-    setSelectedIds(newSet);
+  // ─── Filter Reset ───────────────────────────────────────────────────────────
+
+  const resetFilters = () => setFilters({
+    trainingStatus: '', speciesSearch: '', speciesChanged: '',
+    dateFrom: '', dateTo: '', minReviews: '',
+  });
+
+  // ─── Verdict Badge ──────────────────────────────────────────────────────────
+
+  const verdictBadge = (verdict: string) => {
+    const map: Record<string, string> = {
+      AGREE: 'bg-green-100 text-green-800',
+      CORRECT: 'bg-blue-100 text-blue-800',
+      UNSURE: 'bg-yellow-100 text-yellow-800',
+      NOT_BUTTERFLY: 'bg-red-100 text-red-800',
+    };
+    const labels: Record<string, string> = {
+      AGREE: '✓ Agrees with AI',
+      CORRECT: '🔄 Corrected ID',
+      UNSURE: '? Unsure',
+      NOT_BUTTERFLY: '✗ Not a Butterfly',
+    };
+    return (
+      <span className={`text-xs px-2 py-1 rounded-full font-medium ${map[verdict] || 'bg-gray-100 text-gray-800'}`}>
+        {labels[verdict] || verdict}
+      </span>
+    );
   };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === filteredCandidates.length && filteredCandidates.length > 0) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(filteredCandidates.map(c => c.id)));
-    }
+  // ─── Status Badge ───────────────────────────────────────────────────────────
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      pending: 'bg-gray-100 text-gray-700',
+      ready: 'bg-blue-100 text-blue-700',
+      trained: 'bg-green-100 text-green-700',
+      ignored: 'bg-red-100 text-red-700',
+    };
+    return (
+      <span className={`text-xs px-2 py-1 rounded-full font-medium ${map[status] || 'bg-gray-100'}`}>
+        {status.charAt(0).toUpperCase() + status.slice(1)}
+      </span>
+    );
   };
 
-  const handleApprove = async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Mark ${selectedIds.size} images as READY for training?`)) return;
+  // ─── Render ─────────────────────────────────────────────────────────────────
 
-    const { error } = await supabase
-      .from('expert_reviews')
-      .update({ training_status: 'ready' })
-      .in('id', Array.from(selectedIds));
-
-    if (error) alert("Error: " + error.message);
-    else {
-      alert("Images approved! They will be used in the next training run.");
-      fetchCandidates();
-      setSelectedIds(new Set());
-    }
-  };
-
-  const handleIgnore = async (id: string) => {
-    if (!confirm("Mark this image as ignored? It won't be used for training.")) return;
-    await supabase.from('expert_reviews').update({ training_status: 'ignored' }).eq('id', id);
-    fetchCandidates();
-  };
-
-  const handleRestore = async (id: string) => {
-    if (!confirm("Restore this image back to pending status?")) return;
-    await supabase.from('expert_reviews').update({ training_status: 'pending' }).eq('id', id);
-    fetchCandidates();
-  };
-
-  const handleMarkAsTrained = async () => {
-    if (selectedIds.size === 0) return;
-    if (!confirm(`Mark ${selectedIds.size} images as TRAINED? This should be done after successfully training the model.`)) return;
-
-    const { error } = await supabase
-      .from('expert_reviews')
-      .update({ training_status: 'trained' })
-      .in('id', Array.from(selectedIds));
-
-    if (error) alert("Error: " + error.message);
-    else {
-      alert("Images marked as trained!");
-      fetchCandidates();
-      setSelectedIds(new Set());
-    }
-  };
-
-  const triggerTraining = async () => {
-    const secret = prompt("Enter Admin Secret to start the Python Trainer:");
-    if (!secret) return;
-
-    // UPDATE THIS URL to your actual Hugging Face Space URL
-    const AI_URL = "https://bhanura-lepinet-backend.hf.space/retrain"; 
-
-    try {
-        alert("Signal sent! Check Hugging Face Logs.");
-        await fetch(`${AI_URL}?secret=${secret}`, { method: 'POST' });
-    } catch (e) {
-        alert("Signal sent (or CORS error). Check HF logs to confirm.");
-    }
-  };
-
-  if (loading) return <div className="p-10">Loading Candidates...</div>;
+  if (loading) return (
+    <div className="flex justify-center items-center min-h-screen">
+      <div className="text-gray-500">Loading Training Curator...</div>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <div>
-             <h1 className="text-3xl font-bold text-[#134a86]">AI Training Curator</h1>
-             <p className="text-gray-600">Review verified images before feeding them to the AI.</p>
-             <p className="text-sm text-gray-500 mt-1">
-               Showing {filteredCandidates.length} of {candidates.length} candidates
-             </p>
-          </div>
-          <div className="flex gap-3">
-            <button 
-              onClick={triggerTraining}
-              className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2"
-            >
-              🚀 Start Fine-Tuning
-            </button>
-          </div>
-        </div>
+    <div className="max-w-7xl mx-auto px-4 py-8">
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Training Curator</h1>
 
-        {/* Training Status Overview */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      {/* ── Status Overview ── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'Pending', key: 'pending', color: 'border-gray-300 bg-gray-50' },
+          { label: 'Ready', key: 'ready', color: 'border-blue-300 bg-blue-50' },
+          { label: 'Trained', key: 'trained', color: 'border-green-300 bg-green-50' },
+          { label: 'Ignored', key: 'ignored', color: 'border-red-300 bg-red-50' },
+        ].map(s => (
           <button
-            onClick={() => setFilterTrainingStatus('pending')}
-            className={`p-4 rounded-xl border-2 transition ${
-              filterTrainingStatus === 'pending'
-                ? 'border-yellow-500 bg-yellow-50'
-                : 'border-gray-200 bg-white hover:border-yellow-300'
-            }`}
+            key={s.key}
+            onClick={() => setFilters(f => ({ ...f, trainingStatus: f.trainingStatus === s.key ? '' : s.key }))}
+            className={`p-4 rounded-xl border-2 text-left transition-all ${s.color} ${filters.trainingStatus === s.key ? 'ring-2 ring-offset-2 ring-blue-500' : 'hover:shadow-md'}`}
           >
-            <div className="text-2xl mb-1">⏳</div>
-            <div className="text-sm font-medium text-gray-600">Pending</div>
-            <div className="text-xl font-bold text-gray-900">
-              {candidates.filter(c => c.training_status === 'pending').length}
-            </div>
+            <div className="text-2xl font-bold">{counts[s.key as keyof typeof counts]}</div>
+            <div className="text-sm text-gray-600">{s.label}</div>
           </button>
-
-          <button
-            onClick={() => setFilterTrainingStatus('ready')}
-            className={`p-4 rounded-xl border-2 transition ${
-              filterTrainingStatus === 'ready'
-                ? 'border-green-500 bg-green-50'
-                : 'border-gray-200 bg-white hover:border-green-300'
-            }`}
-          >
-            <div className="text-2xl mb-1">✅</div>
-            <div className="text-sm font-medium text-gray-600">Ready</div>
-            <div className="text-xl font-bold text-gray-900">
-              {candidates.filter(c => c.training_status === 'ready').length}
-            </div>
-          </button>
-
-          <button
-            onClick={() => setFilterTrainingStatus('trained')}
-            className={`p-4 rounded-xl border-2 transition ${
-              filterTrainingStatus === 'trained'
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-200 bg-white hover:border-blue-300'
-            }`}
-          >
-            <div className="text-2xl mb-1">🎓</div>
-            <div className="text-sm font-medium text-gray-600">Trained</div>
-            <div className="text-xl font-bold text-gray-900">
-              {candidates.filter(c => c.training_status === 'trained').length}
-            </div>
-          </button>
-
-          <button
-            onClick={() => setFilterTrainingStatus('ignored')}
-            className={`p-4 rounded-xl border-2 transition ${
-              filterTrainingStatus === 'ignored'
-                ? 'border-red-500 bg-red-50'
-                : 'border-gray-200 bg-white hover:border-red-300'
-            }`}
-          >
-            <div className="text-2xl mb-1">🚫</div>
-            <div className="text-sm font-medium text-gray-600">Ignored</div>
-            <div className="text-xl font-bold text-gray-900">
-              {candidates.filter(c => c.training_status === 'ignored').length}
-            </div>
-          </button>
-
-          <button
-            onClick={() => setFilterTrainingStatus('all')}
-            className={`p-4 rounded-xl border-2 transition ${
-              filterTrainingStatus === 'all'
-                ? 'border-purple-500 bg-purple-50'
-                : 'border-gray-200 bg-white hover:border-purple-300'
-            }`}
-          >
-            <div className="text-2xl mb-1">📊</div>
-            <div className="text-sm font-medium text-gray-600">All</div>
-            <div className="text-xl font-bold text-gray-900">
-              {candidates.length}
-            </div>
-          </button>
-        </div>
-
-        {/* Filters & View Toggle */}
-        <div className="bg-white p-4 rounded-xl shadow border mb-6 space-y-4">
-          <div className="flex flex-wrap gap-4 items-center justify-between">
-            {/* Left side filters */}
-            <div className="flex flex-wrap gap-4 items-center">
-              {/* Search */}
-              <input
-                type="text"
-                placeholder="Search species..."
-                value={searchSpecies}
-                onChange={(e) => setSearchSpecies(e.target.value)}
-                className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-64"
-              />
-              
-              {/* Status Filter */}
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value as any)}
-                className="border border-gray-300 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="all">All Reviews</option>
-                <option value="agreed">Agreed with AI</option>
-                <option value="corrected">Expert Corrected</option>
-              </select>
-            </div>
-
-            {/* Right side view toggle */}
-            <div className="flex items-center gap-2 bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => setViewMode('grid')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition ${
-                  viewMode === 'grid' 
-                    ? 'bg-white text-blue-600 shadow' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM11 13a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                  </svg>
-                  Grid
-                </span>
-              </button>
-              <button
-                onClick={() => setViewMode('list')}
-                className={`px-4 py-2 rounded-lg font-medium text-sm transition ${
-                  viewMode === 'list' 
-                    ? 'bg-white text-blue-600 shadow' 
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
-                  </svg>
-                  List
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Toolbar */}
-        <div className="sticky top-4 z-10 bg-white p-4 rounded-xl shadow border mb-6 flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="font-bold text-gray-700">
-              {selectedIds.size} selected
-            </div>
-            <button 
-              onClick={toggleSelectAll}
-              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
-            >
-              {selectedIds.size === filteredCandidates.length && filteredCandidates.length > 0 ? 'Deselect All' : 'Select All'}
-            </button>
-          </div>
-          <div className="flex items-center gap-3">
-             {filterTrainingStatus === 'pending' && (
-               <button 
-                 onClick={handleApprove}
-                 disabled={selectedIds.size === 0}
-                 className={`px-6 py-2 rounded-lg font-bold text-white transition ${selectedIds.size > 0 ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300'}`}
-               >
-                 ✓ Approve for Training ({selectedIds.size})
-               </button>
-             )}
-             {filterTrainingStatus === 'ready' && (
-               <button 
-                 onClick={handleMarkAsTrained}
-                 disabled={selectedIds.size === 0}
-                 className={`px-6 py-2 rounded-lg font-bold text-white transition ${selectedIds.size > 0 ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300'}`}
-               >
-                 🎓 Mark as Trained ({selectedIds.size})
-               </button>
-             )}
-          </div>
-        </div>
-
-        {/* Content: Grid or List View */}
-        {filteredCandidates.length === 0 ? (
-          <div className="bg-white p-10 rounded-xl shadow text-center text-gray-500">
-            <p className="text-lg font-medium">No candidates found</p>
-            <p className="text-sm mt-2">Try adjusting your filters</p>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <GridView 
-            candidates={filteredCandidates} 
-            selectedIds={selectedIds} 
-            toggleSelection={toggleSelection}
-            handleIgnore={handleIgnore}
-            handleRestore={handleRestore}
-            trainingStatus={filterTrainingStatus}
-          />
-        ) : (
-          <ListView 
-            candidates={filteredCandidates} 
-            selectedIds={selectedIds} 
-            toggleSelection={toggleSelection}
-            handleIgnore={handleIgnore}
-            handleRestore={handleRestore}
-            trainingStatus={filterTrainingStatus}
-          />
-        )}
+        ))}
       </div>
-    </div>
-  );
-}
 
-// Grid View Component
-function GridView({ candidates, selectedIds, toggleSelection, handleIgnore, handleRestore, trainingStatus }: any) {
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-      {candidates.map((item: any) => {
-        const label = item.agreed_with_ai 
-          ? (item.ai_log.final_species_name || item.identified_species_name)
-          : item.identified_species_name;
-
-        const statusColors = {
-          pending: 'bg-yellow-100 text-yellow-700',
-          ready: 'bg-green-100 text-green-700',
-          trained: 'bg-blue-100 text-blue-700',
-          ignored: 'bg-red-100 text-red-700'
-        };
-
-        return (
-          <div 
-            key={item.id} 
-            className={`relative rounded-lg overflow-hidden border-2 cursor-pointer bg-white shadow-sm hover:shadow-md transition ${
-              selectedIds.has(item.id) ? 'border-green-500 ring-2 ring-green-200' : 'border-gray-200'
-            }`}
-            onClick={() => toggleSelection(item.id)}
+      {/* ── Filter Panel ── */}
+      <div className="bg-gray-50 rounded-xl p-4 mb-6 border border-gray-200">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <input
+            type="text"
+            placeholder="Search species name..."
+            value={filters.speciesSearch}
+            onChange={e => setFilters(f => ({ ...f, speciesSearch: e.target.value }))}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <select
+            value={filters.trainingStatus}
+            onChange={e => setFilters(f => ({ ...f, trainingStatus: e.target.value }))}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <div className="h-40 bg-gray-200 relative">
-              <img src={item.ai_log.image_url} className="w-full h-full object-cover" alt="candidate" />
-              
-              {/* Training Status Badge */}
-              <div className={`absolute top-2 left-2 text-xs px-2 py-1 rounded-full font-bold ${statusColors[item.training_status as keyof typeof statusColors]}`}>
-                {item.training_status === 'pending' && '⏳ Pending'}
-                {item.training_status === 'ready' && '✅ Ready'}
-                {item.training_status === 'trained' && '🎓 Trained'}
-                {item.training_status === 'ignored' && '🚫 Ignored'}
-              </div>
-              
-              {/* Checkbox Indicator */}
-              <div className={`absolute top-2 right-2 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center ${
-                selectedIds.has(item.id) ? 'bg-green-500 text-white' : 'bg-black/30'
-              }`}>
-                {selectedIds.has(item.id) && "✓"}
-              </div>
-
-              {/* Agreement Badge */}
-              <div className={`absolute bottom-2 left-2 text-xs px-2 py-1 rounded-full font-bold ${
-                item.agreed_with_ai 
-                  ? 'bg-green-100 text-green-700' 
-                  : 'bg-orange-100 text-orange-700'
-              }`}>
-                {item.agreed_with_ai ? '✓ Agreed' : '✏️ Corrected'}
-              </div>
-            </div>
-
-            <div className="p-3">
-              <p className="font-bold text-sm truncate mb-1" title={label}>{label}</p>
-              <p className="text-xs text-gray-500 truncate">
-                {item.agreed_with_ai ? `AI: ${item.ai_log.final_species_name}` : `From: ${item.ai_log.final_species_name}`}
-              </p>
-              <div className="mt-2 flex gap-1">
-                {(item.training_status === 'pending' || item.training_status === 'ready') && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleIgnore(item.id); }}
-                    className="text-red-500 text-xs hover:underline flex-1 text-left"
-                  >
-                    🚫 Ignore
-                  </button>
-                )}
-                {item.training_status === 'ignored' && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleRestore(item.id); }}
-                    className="text-blue-500 text-xs hover:underline flex-1 text-left"
-                  >
-                    ↻ Restore
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// List View Component
-function ListView({ candidates, selectedIds, toggleSelection, handleIgnore, handleRestore, trainingStatus }: any) {
-  return (
-    <div className="space-y-3">
-      {candidates.map((item: any) => {
-        const label = item.agreed_with_ai 
-          ? (item.ai_log.final_species_name || item.identified_species_name)
-          : item.identified_species_name;
-
-        const statusConfig = {
-          pending: { color: 'bg-yellow-100 text-yellow-700 border-yellow-300', icon: '⏳', text: 'Pending Review' },
-          ready: { color: 'bg-green-100 text-green-700 border-green-300', icon: '✅', text: 'Ready for Training' },
-          trained: { color: 'bg-blue-100 text-blue-700 border-blue-300', icon: '🎓', text: 'Already Trained' },
-          ignored: { color: 'bg-red-100 text-red-700 border-red-300', icon: '🚫', text: 'Ignored' }
-        };
-
-        const status = statusConfig[item.training_status as keyof typeof statusConfig];
-
-        return (
-          <div 
-            key={item.id}
-            className={`bg-white rounded-lg border-2 overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer ${
-              selectedIds.has(item.id) ? 'border-green-500 ring-2 ring-green-200' : 'border-gray-200'
-            }`}
-            onClick={() => toggleSelection(item.id)}
+            <option value="">All Status</option>
+            <option value="pending">Pending</option>
+            <option value="ready">Ready</option>
+            <option value="trained">Trained</option>
+            <option value="ignored">Ignored</option>
+          </select>
+          <select
+            value={filters.speciesChanged}
+            onChange={e => setFilters(f => ({ ...f, speciesChanged: e.target.value }))}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <div className="flex gap-4 p-4">
-              {/* Checkbox */}
-              <div className="flex items-center">
-                <div className={`w-6 h-6 rounded border-2 flex items-center justify-center ${
-                  selectedIds.has(item.id) 
-                    ? 'bg-green-500 border-green-500 text-white' 
-                    : 'border-gray-300'
-                }`}>
-                  {selectedIds.has(item.id) && "✓"}
-                </div>
-              </div>
+            <option value="">All Records</option>
+            <option value="false">AI Confirmed</option>
+            <option value="true">Expert Corrected</option>
+          </select>
+          <input
+            type="date"
+            value={filters.dateFrom}
+            onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <input
+            type="date"
+            value={filters.dateTo}
+            onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          <input
+            type="number"
+            placeholder="Min reviews..."
+            value={filters.minReviews}
+            onChange={e => setFilters(f => ({ ...f, minReviews: e.target.value }))}
+            min="0"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div className="flex justify-between items-center mt-3">
+          <span className="text-sm text-gray-500">
+            Showing {filtered.length} of {records.length} records
+          </span>
+          <button
+            onClick={resetFilters}
+            className="text-sm text-blue-600 hover:underline"
+          >
+            Reset Filters
+          </button>
+        </div>
+      </div>
 
+      {/* ── Records Grid ── */}
+      {filtered.length === 0 ? (
+        <div className="text-center py-16 text-gray-400">No records found.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map(record => (
+            <div
+              key={record.id}
+              onClick={() => openDetail(record)}
+              className="bg-white rounded-xl border border-gray-200 overflow-hidden cursor-pointer hover:shadow-lg transition-all group"
+            >
               {/* Image */}
-              <div className="w-32 h-32 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0">
-                <img src={item.ai_log.image_url} className="w-full h-full object-cover" alt="candidate" />
+              <div className="relative aspect-[4/3]">
+                <ProtectedImage
+                  src={record.image_url}
+                  alt={record.final_common_name || 'Butterfly'}
+                  authorName={record.uploader_name || 'LepiNet User'}
+                  objectFit="cover"
+                />
+                {/* Status badge */}
+                <div className="absolute top-2 left-2">
+                  {statusBadge(record.training_status)}
+                </div>
+                {/* Species changed warning */}
+                {record.species_changed && (
+                  <div className="absolute top-2 right-2 bg-orange-500 text-white text-xs px-2 py-1 rounded-full">
+                    ⚠ ID Changed
+                  </div>
+                )}
               </div>
 
-              {/* Details */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start justify-between gap-4 mb-2">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-lg text-gray-900 truncate" title={label}>
-                      {label}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-bold ${
-                        item.agreed_with_ai 
-                          ? 'bg-green-100 text-green-700' 
-                          : 'bg-orange-100 text-orange-700'
-                      }`}>
-                        {item.agreed_with_ai ? '✓ Agreed with AI' : '✏️ Expert Corrected'}
-                      </div>
-                      <div className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-bold border-2 ${status.color}`}>
-                        {status.icon} {status.text}
-                      </div>
+              {/* Card Content */}
+              <div className="p-3">
+                {/* AI Prediction */}
+                <div className="mb-1">
+                  <span className="text-xs text-gray-400">AI: </span>
+                  <span className="text-xs text-gray-600">
+                    {record.predicted_common_name || record.predicted_id || 'Unknown'}
+                  </span>
+                </div>
+
+                {/* Consensus */}
+                <div className="mb-2">
+                  <span className="text-xs text-gray-400">Consensus: </span>
+                  <span className={`text-sm font-semibold ${record.species_changed ? 'text-orange-600' : 'text-green-600'}`}>
+                    {record.final_common_name || record.final_species_id || 'Unknown'}
+                  </span>
+                </div>
+
+                {/* Review count + Actions */}
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100">
+                  <span className="text-xs text-gray-500">
+                    {record.review_count} {record.review_count === 1 ? 'Review' : 'Reviews'}
+                  </span>
+
+                  {/* Action Buttons */}
+                  <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                    {record.training_status !== 'trained' && (
+                      <>
+                        {record.training_status !== 'ready' && (
+                          <button
+                            onClick={e => updateStatus(record.id, 'ready', e)}
+                            disabled={updatingId === record.id}
+                            className="w-7 h-7 bg-green-500 hover:bg-green-600 text-white rounded-full text-sm flex items-center justify-center disabled:opacity-50"
+                            title="Mark as Ready"
+                          >
+                            ✓
+                          </button>
+                        )}
+                        {record.training_status !== 'ignored' && (
+                          <button
+                            onClick={e => updateStatus(record.id, 'ignored', e)}
+                            disabled={updatingId === record.id}
+                            className="w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full text-sm flex items-center justify-center disabled:opacity-50"
+                            title="Ignore"
+                          >
+                            ✗
+                          </button>
+                        )}
+                        {record.training_status === 'ignored' && (
+                          <button
+                            onClick={e => updateStatus(record.id, 'pending', e)}
+                            disabled={updatingId === record.id}
+                            className="w-7 h-7 bg-gray-500 hover:bg-gray-600 text-white rounded-full text-sm flex items-center justify-center disabled:opacity-50"
+                            title="Restore to Pending"
+                          >
+                            ↺
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {record.training_status === 'trained' && (
+                      <span className="text-xs text-green-600 font-medium">✓ Trained</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Detail Modal ── */}
+      {selectedRecord && (
+        <div
+          className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center p-4 overflow-y-auto"
+          onClick={() => { setSelectedRecord(null); setDetailReviews([]); }}
+        >
+          <div
+            className="bg-white rounded-2xl max-w-4xl w-full my-8"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between p-6 border-b">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Record Details</h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Uploaded by {selectedRecord.uploader_name} · {new Date(selectedRecord.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                onClick={() => { setSelectedRecord(null); setDetailReviews([]); }}
+                className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                {/* Left: Image + Species Info */}
+                <div>
+                  <div className="rounded-xl overflow-hidden mb-4">
+                    <ProtectedImage
+                      src={selectedRecord.image_url}
+                      alt={selectedRecord.final_common_name}
+                      authorName={selectedRecord.uploader_name || 'LepiNet User'}
+                      objectFit="contain"
+                    />
+                  </div>
+
+                  {/* Species Comparison */}
+                  <div className="space-y-3">
+                    {/* AI Prediction */}
+                    <div className="p-3 bg-blue-50 rounded-xl border-l-4 border-blue-400">
+                      <p className="text-xs text-blue-500 font-medium mb-1">AI Prediction</p>
+                      <p className="font-semibold text-gray-800">
+                        {selectedRecord.predicted_common_name || selectedRecord.predicted_id || 'Unknown'}
+                      </p>
+                      <p className="text-xs text-gray-500 italic">{selectedRecord.predicted_scientific_name}</p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Confidence: {(selectedRecord.predicted_confidence * 100).toFixed(1)}%
+                      </p>
                     </div>
+
+                    {/* Expert Consensus */}
+                    <div className={`p-3 rounded-xl border-l-4 ${selectedRecord.species_changed ? 'bg-orange-50 border-orange-400' : 'bg-green-50 border-green-400'}`}>
+                      <p className={`text-xs font-medium mb-1 ${selectedRecord.species_changed ? 'text-orange-500' : 'text-green-500'}`}>
+                        Expert Consensus {selectedRecord.species_changed ? '⚠ Changed' : '✓ Confirmed'}
+                      </p>
+                      <p className="font-semibold text-gray-800">
+                        {selectedRecord.final_common_name || selectedRecord.final_species_id || 'Unknown'}
+                      </p>
+                      <p className="text-xs text-gray-500 italic">{selectedRecord.final_scientific_name}</p>
+                    </div>
+                  </div>
+
+                  {/* Stats Summary */}
+                  <div className="grid grid-cols-4 gap-2 mt-4">
+                    {[
+                      { label: 'Reviews', value: selectedRecord.review_count, color: 'text-blue-600' },
+                      { label: 'Agree', value: selectedRecord.agree_count, color: 'text-green-600' },
+                      { label: 'Correct', value: selectedRecord.correct_count, color: 'text-purple-600' },
+                      { label: 'Unsure', value: selectedRecord.unsure_count, color: 'text-yellow-600' },
+                    ].map(s => (
+                      <div key={s.label} className="text-center p-2 bg-gray-50 rounded-lg">
+                        <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+                        <div className="text-xs text-gray-500">{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Training Actions */}
+                  <div className="flex gap-2 mt-4">
+                    {selectedRecord.training_status !== 'trained' && selectedRecord.training_status !== 'ready' && (
+                      <button
+                        onClick={() => updateStatus(selectedRecord.id, 'ready')}
+                        disabled={updatingId === selectedRecord.id}
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 px-4 rounded-lg text-sm font-medium disabled:opacity-50"
+                      >
+                        ✓ Mark as Ready
+                      </button>
+                    )}
+                    {selectedRecord.training_status === 'ready' && (
+                      <button
+                        onClick={() => updateStatus(selectedRecord.id, 'trained')}
+                        disabled={updatingId === selectedRecord.id}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-sm font-medium disabled:opacity-50"
+                      >
+                        ✓ Mark as Trained
+                      </button>
+                    )}
+                    {selectedRecord.training_status !== 'ignored' && selectedRecord.training_status !== 'trained' && (
+                      <button
+                        onClick={() => updateStatus(selectedRecord.id, 'ignored')}
+                        disabled={updatingId === selectedRecord.id}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg text-sm font-medium disabled:opacity-50"
+                      >
+                        ✗ Ignore
+                      </button>
+                    )}
+                    {selectedRecord.training_status === 'ignored' && (
+                      <button
+                        onClick={() => updateStatus(selectedRecord.id, 'pending')}
+                        disabled={updatingId === selectedRecord.id}
+                        className="flex-1 bg-gray-600 hover:bg-gray-700 text-white py-2 px-4 rounded-lg text-sm font-medium disabled:opacity-50"
+                      >
+                        ↺ Restore to Pending
+                      </button>
+                    )}
+                    {selectedRecord.training_status === 'trained' && (
+                      <div className="flex-1 bg-green-100 text-green-800 py-2 px-4 rounded-lg text-sm font-medium text-center">
+                        ✓ Used for Training
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="space-y-2 text-sm">
-                  <div className="flex items-start gap-2">
-                    <span className="text-gray-500 font-medium min-w-[100px]">AI Prediction:</span>
-                    <span className="text-gray-900">{item.ai_log.final_species_name || 'Unknown'}</span>
-                  </div>
-                  
-                  {!item.agreed_with_ai && (
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500 font-medium min-w-[100px]">Expert Says:</span>
-                      <span className="text-gray-900 font-semibold">{item.identified_species_name}</span>
-                    </div>
-                  )}
-                  
-                  <div className="flex items-start gap-2">
-                    <span className="text-gray-500 font-medium min-w-[100px]">Confidence:</span>
-                    <span className="text-gray-900">{item.confidence_level}</span>
-                  </div>
+                {/* Right: Reviews List */}
+                <div>
+                  <h3 className="font-bold text-gray-800 mb-4">
+                    Expert Reviews ({selectedRecord.review_count})
+                  </h3>
 
-                  <div className="flex items-start gap-2">
-                    <span className="text-gray-500 font-medium min-w-[100px]">Record ID:</span>
-                    <span className="text-gray-400 text-xs font-mono">{item.ai_log_id.substring(0, 8)}...</span>
-                  </div>
+                  {detailLoading ? (
+                    <div className="text-center py-8 text-gray-400">Loading reviews...</div>
+                  ) : detailReviews.length === 0 ? (
+                    <div className="text-center py-8 text-gray-400">No reviews yet.</div>
+                  ) : (
+                    <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1">
+                      {detailReviews.map(review => (
+                        <div key={review.review_id} className="border border-gray-200 rounded-xl p-4">
 
-                  {item.created_at && (
-                    <div className="flex items-start gap-2">
-                      <span className="text-gray-500 font-medium min-w-[100px]">Reviewed:</span>
-                      <span className="text-gray-400 text-xs">{new Date(item.created_at).toLocaleDateString()}</span>
+                          {/* Reviewer Header */}
+                          <div className="flex items-center gap-3 mb-3">
+                            <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm flex-shrink-0">
+                              {review.reviewer?.first_name?.[0] || '?'}
+                            </div>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-sm text-gray-800">
+                                  {review.reviewer?.first_name} {review.reviewer?.last_name}
+                                </span>
+                                {review.reviewer?.role === 'verified_expert' && (
+                                  <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full">✓ Verified</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {new Date(review.created_at).toLocaleDateString()}
+                              </div>
+                            </div>
+                            {verdictBadge(review.verdict)}
+                          </div>
+
+                          {/* Quality + Features */}
+                          <div className="flex flex-wrap gap-2 mb-3 text-xs">
+                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                              Quality: {review.image_quality_rating}/5 ⭐
+                            </span>
+                            <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full">
+                              Score: {review.weighted_score.toFixed(1)}
+                            </span>
+                            {review.is_new_discovery && (
+                              <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                                🔭 New Discovery
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Visible features */}
+                          <div className="flex gap-2 mb-3 flex-wrap">
+                            {[
+                              { key: 'wings_visible', label: 'Wings' },
+                              { key: 'antennae_visible', label: 'Antennae' },
+                              { key: 'body_visible', label: 'Body' },
+                              { key: 'patterns_visible', label: 'Patterns' },
+                            ].map(f => (
+                              <span
+                                key={f.key}
+                                className={`text-xs px-2 py-0.5 rounded-full ${(review as any)[f.key] ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}
+                              >
+                                {f.label}
+                              </span>
+                            ))}
+                          </div>
+
+                          {/* Corrected species */}
+                          {review.verdict === 'CORRECT' && review.identified_species_name && (
+                            <div className="mb-3 p-2 bg-blue-50 rounded-lg text-sm">
+                              <span className="text-blue-600 font-medium">Identified as: </span>
+                              <span className="text-blue-800">{review.identified_species_name}</span>
+                            </div>
+                          )}
+
+                          {/* Notes */}
+                          {review.identification_notes && (
+                            <p className="text-sm text-gray-600 mb-3 italic">
+                              "{review.identification_notes}"
+                            </p>
+                          )}
+
+                          {/* Ratings */}
+                          {review.rating_count > 0 && (
+                            <div className="flex gap-3 text-xs text-gray-500 mb-3">
+                              <span>👍 {review.helpful_count} Helpful</span>
+                              <span>👎 {review.not_helpful_count} Not Helpful</span>
+                            </div>
+                          )}
+
+                          {/* Comments */}
+                          {review.comments && review.comments.length > 0 && (
+                            <div className="border-t border-gray-100 pt-3 mt-3 space-y-2">
+                              <p className="text-xs font-medium text-gray-500 mb-2">
+                                Comments ({review.agree_comment_count} agree · {review.disagree_comment_count} disagree)
+                              </p>
+                              {review.comments.map(comment => (
+                                <div key={comment.id} className="flex gap-2">
+                                  <div className={`w-1 flex-shrink-0 rounded-full ${comment.agrees_with_review ? 'bg-green-400' : 'bg-red-400'}`} />
+                                  <div>
+                                    <span className="text-xs font-medium text-gray-700">
+                                      {comment.commenter?.first_name} {comment.commenter?.last_name}
+                                    </span>
+                                    <span className={`text-xs ml-1 ${comment.agrees_with_review ? 'text-green-600' : 'text-red-600'}`}>
+                                      {comment.agrees_with_review ? '· Agrees' : '· Disagrees'}
+                                    </span>
+                                    <p className="text-xs text-gray-600 mt-0.5">{comment.comment_text}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
-              </div>
-
-              {/* Actions */}
-              <div className="flex flex-col gap-2">
-                {(item.training_status === 'pending' || item.training_status === 'ready') && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleIgnore(item.id); }}
-                    className="text-red-500 text-sm hover:bg-red-50 px-3 py-2 rounded-lg transition font-medium whitespace-nowrap"
-                  >
-                    🚫 Ignore
-                  </button>
-                )}
-                {item.training_status === 'ignored' && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleRestore(item.id); }}
-                    className="text-blue-500 text-sm hover:bg-blue-50 px-3 py-2 rounded-lg transition font-medium whitespace-nowrap"
-                  >
-                    ↻ Restore
-                  </button>
-                )}
               </div>
             </div>
           </div>
-        );
-      })}
+        </div>
+      )}
     </div>
   );
 }
