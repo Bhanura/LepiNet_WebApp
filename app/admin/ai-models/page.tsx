@@ -18,6 +18,7 @@ export default function AIControlPage() {
   const [readySummary, setReadySummary] = useState<ReadySummary[]>([]);
   const [modelHistory, setModelHistory] = useState<ModelVersion[]>([]);
   const [selectedModel, setSelectedModel] = useState<ModelVersion | null>(null);
+  const [zoomedImage, setZoomedImage] = useState<string | null>(null);
 
   // Training States
   const [epochs, setEpochs] = useState(5);
@@ -64,6 +65,17 @@ export default function AIControlPage() {
   }, [router, supabase]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ESC key handler for zoomed image
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && zoomedImage) {
+        setZoomedImage(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [zoomedImage]);
 
   const handleStartTraining = async () => {
     if (!adminSecret) return setTrainMessage({ text: "Admin Secret Password is required!", type: 'error' });
@@ -242,13 +254,74 @@ export default function AIControlPage() {
             </div>
             {selectedModel.evaluation.confusion_matrix_url && (
               <div>
-                <h4 className="font-bold text-gray-700 mb-2">Confusion Matrix Plot</h4>
-                <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden flex justify-center p-2">
+                <div className="flex justify-between items-center mb-2">
+                  <h4 className="font-bold text-gray-700">Confusion Matrix Plot</h4>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => window.open(selectedModel.evaluation!.confusion_matrix_url, '_blank')}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-medium hover:underline"
+                    >
+                      Open in New Tab ↗
+                    </button>
+                  </div>
+                </div>
+                <div 
+                  className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden flex justify-center p-2 cursor-zoom-in hover:bg-gray-100 transition-colors"
+                  onClick={() => setZoomedImage(selectedModel.evaluation!.confusion_matrix_url)}
+                  title="Click to zoom"
+                >
                   <img src={selectedModel.evaluation.confusion_matrix_url} alt={`Confusion Matrix for ${selectedModel.version_name}`} className="max-h-[400px] object-contain" />
                 </div>
+                <p className="text-xs text-gray-500 text-center mt-2">💡 Click on image to view fullscreen</p>
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── Fullscreen Image Zoom Modal ── */}
+      {zoomedImage && (
+        <div 
+          className="fixed inset-0 bg-black/95 z-[60] flex items-center justify-center p-4"
+          onClick={() => setZoomedImage(null)}
+        >
+          <button
+            onClick={() => setZoomedImage(null)}
+            className="absolute top-4 right-4 text-white hover:text-gray-300 text-4xl leading-none z-10 bg-black/50 rounded-full w-12 h-12 flex items-center justify-center"
+            title="Close (ESC)"
+          >
+            ×
+          </button>
+          <div className="absolute top-4 left-4 flex gap-2 z-10">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(zoomedImage, '_blank');
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            >
+              Open in New Tab ↗
+            </button>
+            <a
+              href={zoomedImage}
+              download="confusion_matrix.png"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            >
+              Download 📥
+            </a>
+          </div>
+          <div 
+            className="max-w-full max-h-full overflow-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img 
+              src={zoomedImage} 
+              alt="Confusion Matrix - Fullscreen" 
+              className="w-auto h-auto max-w-none"
+            />
+          </div>
+          <p className="absolute bottom-4 text-white text-sm">🖱️ Scroll to zoom • Click outside to close</p>
         </div>
       )}
     </div>
