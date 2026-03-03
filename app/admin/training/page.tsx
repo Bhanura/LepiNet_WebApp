@@ -90,6 +90,7 @@ export default function TrainingCurator() {
   const [detailReviews, setDetailReviews] = useState<ReviewWithStats[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [bulkRetraining, setBulkRetraining] = useState(false);
   const [filters, setFilters] = useState<Filters>({
     trainingStatus: '',
     speciesSearch: '',
@@ -196,25 +197,76 @@ export default function TrainingCurator() {
     e?.stopPropagation();
     setUpdatingId(id);
 
-    const { error } = await supabase
+    // Use .select() to verify the update actually happened
+    const { data, error } = await supabase
       .from('ai_logs')
       .update({ training_status: status })
-      .eq('id', id);
+      .eq('id', id)
+      .select()
+      .single();
 
-    if (error) {
+    // Check both error AND data to catch RLS failures
+    if (error || !data) {
       console.error('Status update error:', error);
-      alert('Failed to update status');
+      alert('Failed to update status. Check browser console for details.\n\nThis might be a permissions issue.');
       setUpdatingId(null);
       return;
     }
 
-    // Update local state
+    // Update local state ONLY if database update succeeded
     setRecords(prev => prev.map(r => r.id === id ? { ...r, training_status: status as AiLogWithStats['training_status'] } : r));
     if (selectedRecord?.id === id) {
       setSelectedRecord(prev => prev ? { ...prev, training_status: status as AiLogWithStats['training_status'] } : null);
     }
 
     setUpdatingId(null);
+  };
+
+  // ─── Bulk Retrain All Trained Records ──────────────────────────────────────
+
+  const retrainAll = async () => {
+    const trainedRecords = records.filter(r => r.training_status === 'trained');
+    
+    if (trainedRecords.length === 0) {
+      alert('No trained records to retrain.');
+      return;
+    }
+
+    const confirmed = confirm(
+      `Are you sure you want to mark all ${trainedRecords.length} trained record(s) for retraining?\n\nThis will change their status from 'trained' to 'ready'.`
+    );
+
+    if (!confirmed) return;
+
+    setBulkRetraining(true);
+
+    // Update all trained records to ready
+    const { error } = await supabase
+      .from('ai_logs')
+      .update({ training_status: 'ready' })
+      .eq('training_status', 'trained');
+
+    if (error) {
+      console.error('Bulk retrain error:', error);
+      alert('Failed to retrain all records. Check browser console for details.');
+      setBulkRetraining(false);
+      return;
+    }
+
+    // Update local state
+    setRecords(prev => prev.map(r => 
+      r.training_status === 'trained' 
+        ? { ...r, training_status: 'ready' as AiLogWithStats['training_status'] } 
+        : r
+    ));
+
+    // Clear selected record if it was trained
+    if (selectedRecord?.training_status === 'trained') {
+      setSelectedRecord(null);
+    }
+
+    setBulkRetraining(false);
+    alert(`Successfully marked ${trainedRecords.length} record(s) for retraining!`);
   };
 
   // ─── Open Detail ────────────────────────────────────────────────────────────
@@ -337,25 +389,54 @@ export default function TrainingCurator() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Training Curator</h1>
+      
+      {/* ── Page Header & Navigation ── */}
+      <div className="flex justify-between items-center mb-8 border-b pb-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Training Curator</h1>
+          <p className="text-sm text-gray-500 mt-1">Review and curate training data for AI models</p>
+        </div>
+        <button 
+          onClick={() => router.push('/admin/ai-models')}
+          className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm"
+        >
+          AI Control Center →
+        </button>
+      </div>
 
       {/* ── Status Overview ── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Pending', key: 'pending', color: 'border-gray-300 bg-gray-50' },
-          { label: 'Ready', key: 'ready', color: 'border-blue-300 bg-blue-50' },
-          { label: 'Trained', key: 'trained', color: 'border-green-300 bg-green-50' },
-          { label: 'Ignored', key: 'ignored', color: 'border-red-300 bg-red-50' },
-        ].map(s => (
-          <button
-            key={s.key}
-            onClick={() => setFilters(f => ({ ...f, trainingStatus: f.trainingStatus === s.key ? '' : s.key }))}
-            className={`p-4 rounded-xl border-2 text-left transition-all ${s.color} ${filters.trainingStatus === s.key ? 'ring-2 ring-offset-2 ring-blue-500' : 'hover:shadow-md'}`}
-          >
-            <div className="text-2xl font-bold">{counts[s.key as keyof typeof counts]}</div>
-            <div className="text-sm text-gray-600">{s.label}</div>
-          </button>
-        ))}
+      <div className="mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+          {[
+            { label: 'Pending', key: 'pending', color: 'border-gray-300 bg-gray-50' },
+            { label: 'Ready', key: 'ready', color: 'border-blue-300 bg-blue-50' },
+            { label: 'Trained', key: 'trained', color: 'border-green-300 bg-green-50' },
+            { label: 'Ignored', key: 'ignored', color: 'border-red-300 bg-red-50' },
+          ].map(s => (
+            <button
+              key={s.key}
+              onClick={() => setFilters(f => ({ ...f, trainingStatus: f.trainingStatus === s.key ? '' : s.key }))}
+              className={`p-4 rounded-xl border-2 text-left transition-all ${s.color} ${filters.trainingStatus === s.key ? 'ring-2 ring-offset-2 ring-blue-500' : 'hover:shadow-md'}`}
+            >
+              <div className="text-2xl font-bold">{counts[s.key as keyof typeof counts]}</div>
+              <div className="text-sm text-gray-600">{s.label}</div>
+            </button>
+          ))}
+        </div>
+        
+        {/* Bulk Actions - Only show when Trained filter is active */}
+        {filters.trainingStatus === 'trained' && counts.trained > 0 && (
+          <div className="flex justify-end">
+            <button
+              onClick={retrainAll}
+              disabled={bulkRetraining}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              <span>↻</span>
+              {bulkRetraining ? `Retraining ${counts.trained} record(s)...` : `Retrain All (${counts.trained})`}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Filter Panel ── */}
@@ -514,7 +595,14 @@ export default function TrainingCurator() {
                       </>
                     )}
                     {record.training_status === 'trained' && (
-                      <span className="text-xs text-green-600 font-medium">✓ Trained</span>
+                      <button
+                        onClick={e => updateStatus(record.id, 'ready', e)}
+                        disabled={updatingId === record.id}
+                        className="w-7 h-7 bg-blue-500 hover:bg-blue-600 text-white rounded-full text-sm flex items-center justify-center disabled:opacity-50"
+                        title="Retrain"
+                      >
+                        ↻
+                      </button>
                     )}
                   </div>
                 </div>
@@ -644,9 +732,13 @@ export default function TrainingCurator() {
                       </button>
                     )}
                     {selectedRecord.training_status === 'trained' && (
-                      <div className="flex-1 bg-green-100 text-green-800 py-2 px-4 rounded-lg text-sm font-medium text-center">
-                        ✓ Used for Training
-                      </div>
+                      <button
+                        onClick={() => updateStatus(selectedRecord.id, 'ready')}
+                        disabled={updatingId === selectedRecord.id}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg text-sm font-medium disabled:opacity-50"
+                      >
+                        ↻ Mark for Retraining
+                      </button>
                     )}
                   </div>
                 </div>
