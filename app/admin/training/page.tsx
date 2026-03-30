@@ -77,6 +77,7 @@ type Filters = {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function TrainingCurator() {
+  const PAGE_SIZE = 25;
   const router = useRouter();
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -85,6 +86,7 @@ export default function TrainingCurator() {
 
   const [records, setRecords] = useState<AiLogWithStats[]>([]);
   const [filtered, setFiltered] = useState<AiLogWithStats[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<AiLogWithStats | null>(null);
   const [detailReviews, setDetailReviews] = useState<ReviewWithStats[]>([]);
@@ -117,7 +119,7 @@ export default function TrainingCurator() {
 
     const { data, error } = await supabase
       .from('ai_logs_with_stats')
-      .select('*')
+      .select('id, user_id, image_url, predicted_id, predicted_confidence, final_species_id, training_status, created_at, predicted_common_name, predicted_scientific_name, predicted_sinhala_name, final_common_name, final_scientific_name, final_sinhala_name, review_count, agree_count, correct_count, unsure_count, not_butterfly_count, avg_quality_rating, species_changed')
       .order('created_at', { ascending: false });
 
     if (error) { 
@@ -127,11 +129,13 @@ export default function TrainingCurator() {
     }
 
     // Fetch uploader names separately
-    const userIds = [...new Set((data || []).map((r: any) => r.user_id))];
-    const { data: users } = await supabase
-      .from('users')
-      .select('id, first_name, last_name')
-      .in('id', userIds);
+    const userIds = [...new Set((data || []).map((r: any) => r.user_id).filter(Boolean))];
+    const users = userIds.length > 0
+      ? (await supabase
+          .from('users')
+          .select('id, first_name, last_name')
+          .in('id', userIds)).data
+      : [];
 
     const userMap = new Map((users || []).map((u: any) => [u.id, `${u.first_name} ${u.last_name}`]));
 
@@ -142,6 +146,7 @@ export default function TrainingCurator() {
 
     setRecords(enriched);
     setFiltered(enriched);
+    setCurrentPage(1);
     setLoading(false);
   }, [router, supabase]);
 
@@ -180,6 +185,7 @@ export default function TrainingCurator() {
       result = result.filter(r => r.review_count >= parseInt(filters.minReviews));
 
     setFiltered(result);
+    setCurrentPage(1);
   }, [filters, records]);
 
   // ─── Status Counts ──────────────────────────────────────────────────────────
@@ -289,28 +295,34 @@ export default function TrainingCurator() {
     }
 
     // Fetch reviewer info
-    const reviewerIds = [...new Set((reviews || []).map((r: any) => r.reviewer_id))];
-    const { data: reviewers } = await supabase
-      .from('users')
-      .select('id, first_name, last_name, role')
-      .in('id', reviewerIds);
+    const reviewerIds = [...new Set((reviews || []).map((r: any) => r.reviewer_id).filter(Boolean))];
+    const reviewers = reviewerIds.length > 0
+      ? (await supabase
+          .from('users')
+          .select('id, first_name, last_name, role')
+          .in('id', reviewerIds)).data
+      : [];
 
     const reviewerMap = new Map((reviewers || []).map((u: any) => [u.id, u]));
 
     // Fetch comments for each review
     const reviewIds = (reviews || []).map((r: any) => r.review_id);
-    const { data: comments } = await supabase
-      .from('review_comments')
-      .select('id, review_id, comment_text, agrees_with_review, created_at, commenter_id')
-      .in('review_id', reviewIds)
-      .order('created_at', { ascending: true });
+    const comments = reviewIds.length > 0
+      ? (await supabase
+          .from('review_comments')
+          .select('id, review_id, comment_text, agrees_with_review, created_at, commenter_id')
+          .in('review_id', reviewIds)
+          .order('created_at', { ascending: true })).data
+      : [];
 
     // Fetch commenter info
-    const commenterIds = [...new Set((comments || []).map((c: any) => c.commenter_id))];
-    const { data: commenters } = await supabase
-      .from('users')
-      .select('id, first_name, last_name')
-      .in('id', commenterIds);
+    const commenterIds = [...new Set((comments || []).map((c: any) => c.commenter_id).filter(Boolean))];
+    const commenters = commenterIds.length > 0
+      ? (await supabase
+          .from('users')
+          .select('id, first_name, last_name')
+          .in('id', commenterIds)).data
+      : [];
 
     const commenterMap = new Map((commenters || []).map((u: any) => [u.id, u]));
 
@@ -507,8 +519,34 @@ export default function TrainingCurator() {
       {filtered.length === 0 ? (
         <div className="text-center py-16 text-gray-400">No records found.</div>
       ) : (
+        (() => {
+          const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+          const safeCurrentPage = Math.min(currentPage, totalPages);
+          const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+          const pageItems = filtered.slice(startIndex, startIndex + PAGE_SIZE);
+
+          const getPaginationItems = (): Array<number | '...'> => {
+            if (totalPages <= 7) {
+              return Array.from({ length: totalPages }, (_, index) => index + 1);
+            }
+
+            if (safeCurrentPage <= 4) {
+              return [1, 2, 3, 4, 5, '...', totalPages];
+            }
+
+            if (safeCurrentPage >= totalPages - 3) {
+              return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+            }
+
+            return [1, '...', safeCurrentPage - 1, safeCurrentPage, safeCurrentPage + 1, '...', totalPages];
+          };
+
+          const paginationItems = getPaginationItems();
+
+          return (
+            <>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(record => (
+          {pageItems.map(record => (
             <div
               key={record.id}
               onClick={() => openDetail(record)}
@@ -610,6 +648,58 @@ export default function TrainingCurator() {
             </div>
           ))}
         </div>
+
+        {totalPages > 1 && (
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
+            <button
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={safeCurrentPage === 1}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+
+            {paginationItems.map((item, index) => {
+              if (item === '...') {
+                return (
+                  <span key={`ellipsis-${index}`} className="px-2 text-gray-500">
+                    ...
+                  </span>
+                );
+              }
+
+              const isActive = item === safeCurrentPage;
+              return (
+                <button
+                  key={`page-${item}`}
+                  onClick={() => setCurrentPage(item)}
+                  className={`min-w-10 px-3 py-2 rounded-lg text-sm font-medium border ${
+                    isActive
+                      ? 'bg-[#134a86] text-white border-[#134a86]'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {item}
+                </button>
+              );
+            })}
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={safeCurrentPage === totalPages}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+          </div>
+        )}
+
+        <div className="mt-6 text-center text-sm text-gray-500">
+          Page {safeCurrentPage} of {totalPages} • Showing {pageItems.length} of {filtered.length} filtered records ({records.length} total)
+        </div>
+            </>
+          );
+        })()
       )}
 
       {/* ── Detail Modal ── */}
