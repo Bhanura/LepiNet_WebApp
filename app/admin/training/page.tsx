@@ -85,7 +85,9 @@ export default function TrainingCurator() {
   );
 
   const [records, setRecords] = useState<AiLogWithStats[]>([]);
-  const [filtered, setFiltered] = useState<AiLogWithStats[]>([]);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalFiltered, setTotalFiltered] = useState(0);
+  const [counts, setCounts] = useState({ pending: 0, ready: 0, trained: 0, ignored: 0 });
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [selectedRecord, setSelectedRecord] = useState<AiLogWithStats | null>(null);
@@ -102,12 +104,55 @@ export default function TrainingCurator() {
     minReviews: '',
   });
 
+  const applyFiltersToQuery = (query: any) => {
+    let filteredQuery = query;
+
+    if (filters.trainingStatus) {
+      filteredQuery = filteredQuery.eq('training_status', filters.trainingStatus);
+    }
+
+    if (filters.speciesSearch.trim()) {
+      const q = filters.speciesSearch.trim().replace(/,/g, ' ');
+      filteredQuery = filteredQuery.or(
+        `predicted_common_name.ilike.%${q}%,final_common_name.ilike.%${q}%,predicted_scientific_name.ilike.%${q}%,final_scientific_name.ilike.%${q}%`
+      );
+    }
+
+    if (filters.speciesChanged === 'true') {
+      filteredQuery = filteredQuery.eq('species_changed', true);
+    } else if (filters.speciesChanged === 'false') {
+      filteredQuery = filteredQuery.eq('species_changed', false);
+    }
+
+    if (filters.dateFrom) {
+      filteredQuery = filteredQuery.gte('created_at', `${filters.dateFrom}T00:00:00`);
+    }
+
+    if (filters.dateTo) {
+      const nextDay = new Date(`${filters.dateTo}T00:00:00`);
+      nextDay.setDate(nextDay.getDate() + 1);
+      filteredQuery = filteredQuery.lt('created_at', nextDay.toISOString());
+    }
+
+    if (filters.minReviews) {
+      const min = parseInt(filters.minReviews, 10);
+      if (!Number.isNaN(min)) {
+        filteredQuery = filteredQuery.gte('review_count', min);
+      }
+    }
+
+    return filteredQuery;
+  };
+
   // ─── Fetch Records ──────────────────────────────────────────────────────────
 
   const fetchRecords = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return router.push('/login');
+    if (!user) {
+      setLoading(false);
+      return router.push('/login');
+    }
 
     // Check admin role
     const { data: userData } = await supabase
@@ -115,12 +160,47 @@ export default function TrainingCurator() {
       .select('role')
       .eq('id', user.id)
       .single();
-    if (userData?.role !== 'admin') return router.push('/');
+    if (userData?.role !== 'admin') {
+      setLoading(false);
+      return router.push('/');
+    }
 
-    const { data, error } = await supabase
-      .from('ai_logs_with_stats')
-      .select('id, user_id, image_url, predicted_id, predicted_confidence, final_species_id, training_status, created_at, predicted_common_name, predicted_scientific_name, predicted_sinhala_name, final_common_name, final_scientific_name, final_sinhala_name, review_count, agree_count, correct_count, unsure_count, not_butterfly_count, avg_quality_rating, species_changed')
-      .order('created_at', { ascending: false });
+    const from = (currentPage - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const pageQuery = applyFiltersToQuery(
+      supabase
+        .from('ai_logs_with_stats')
+        .select('id, user_id, image_url, predicted_id, predicted_confidence, final_species_id, training_status, created_at, predicted_common_name, predicted_scientific_name, predicted_sinhala_name, final_common_name, final_scientific_name, final_sinhala_name, review_count, agree_count, correct_count, unsure_count, not_butterfly_count, avg_quality_rating, species_changed')
+        .order('created_at', { ascending: false })
+        .range(from, to)
+    );
+
+    const filteredCountQuery = applyFiltersToQuery(
+      supabase
+        .from('ai_logs_with_stats')
+        .select('id', { count: 'exact', head: true })
+    );
+
+    const [
+      pageResult,
+      filteredCountResult,
+      totalCountResult,
+      pendingCountResult,
+      readyCountResult,
+      trainedCountResult,
+      ignoredCountResult,
+    ] = await Promise.all([
+      pageQuery,
+      filteredCountQuery,
+      supabase.from('ai_logs_with_stats').select('id', { count: 'exact', head: true }),
+      supabase.from('ai_logs').select('id', { count: 'exact', head: true }).eq('training_status', 'pending'),
+      supabase.from('ai_logs').select('id', { count: 'exact', head: true }).eq('training_status', 'ready'),
+      supabase.from('ai_logs').select('id', { count: 'exact', head: true }).eq('training_status', 'trained'),
+      supabase.from('ai_logs').select('id', { count: 'exact', head: true }).eq('training_status', 'ignored'),
+    ]);
+
+    const { data, error } = pageResult;
 
     if (error) { 
       console.error(error); 
@@ -128,7 +208,7 @@ export default function TrainingCurator() {
       return; 
     }
 
-    // Fetch uploader names separately
+    // Fetch uploader names for current page only.
     const userIds = [...new Set((data || []).map((r: any) => r.user_id).filter(Boolean))];
     const users = userIds.length > 0
       ? (await supabase
@@ -145,57 +225,29 @@ export default function TrainingCurator() {
     }));
 
     setRecords(enriched);
-    setFiltered(enriched);
-    setCurrentPage(1);
+    setTotalRecords(totalCountResult.count || 0);
+    setTotalFiltered(filteredCountResult.count || 0);
+    setCounts({
+      pending: pendingCountResult.count || 0,
+      ready: readyCountResult.count || 0,
+      trained: trainedCountResult.count || 0,
+      ignored: ignoredCountResult.count || 0,
+    });
     setLoading(false);
-  }, [router, supabase]);
+  }, [router, supabase, filters, currentPage]);
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
-  // ─── Apply Filters ──────────────────────────────────────────────────────────
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
 
   useEffect(() => {
-    let result = [...records];
-
-    if (filters.trainingStatus)
-      result = result.filter(r => r.training_status === filters.trainingStatus);
-
-    if (filters.speciesSearch) {
-      const q = filters.speciesSearch.toLowerCase();
-      result = result.filter(r =>
-        r.predicted_common_name?.toLowerCase().includes(q) ||
-        r.final_common_name?.toLowerCase().includes(q) ||
-        r.predicted_scientific_name?.toLowerCase().includes(q) ||
-        r.final_scientific_name?.toLowerCase().includes(q)
-      );
+    const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
     }
-
-    if (filters.speciesChanged === 'true')
-      result = result.filter(r => r.species_changed);
-    else if (filters.speciesChanged === 'false')
-      result = result.filter(r => !r.species_changed);
-
-    if (filters.dateFrom)
-      result = result.filter(r => new Date(r.created_at) >= new Date(filters.dateFrom));
-
-    if (filters.dateTo)
-      result = result.filter(r => new Date(r.created_at) <= new Date(filters.dateTo));
-
-    if (filters.minReviews)
-      result = result.filter(r => r.review_count >= parseInt(filters.minReviews));
-
-    setFiltered(result);
-    setCurrentPage(1);
-  }, [filters, records]);
-
-  // ─── Status Counts ──────────────────────────────────────────────────────────
-
-  const counts = {
-    pending: records.filter(r => r.training_status === 'pending').length,
-    ready: records.filter(r => r.training_status === 'ready').length,
-    trained: records.filter(r => r.training_status === 'trained').length,
-    ignored: records.filter(r => r.training_status === 'ignored').length,
-  };
+  }, [currentPage, totalFiltered]);
 
   // ─── Status Update ──────────────────────────────────────────────────────────
 
@@ -219,27 +271,26 @@ export default function TrainingCurator() {
       return;
     }
 
-    // Update local state ONLY if database update succeeded
+    // Update local state only if database update succeeded
     setRecords(prev => prev.map(r => r.id === id ? { ...r, training_status: status as AiLogWithStats['training_status'] } : r));
     if (selectedRecord?.id === id) {
       setSelectedRecord(prev => prev ? { ...prev, training_status: status as AiLogWithStats['training_status'] } : null);
     }
 
     setUpdatingId(null);
+    fetchRecords();
   };
 
   // ─── Bulk Retrain All Trained Records ──────────────────────────────────────
 
   const retrainAll = async () => {
-    const trainedRecords = records.filter(r => r.training_status === 'trained');
-    
-    if (trainedRecords.length === 0) {
+    if (counts.trained === 0) {
       alert('No trained records to retrain.');
       return;
     }
 
     const confirmed = confirm(
-      `Are you sure you want to mark all ${trainedRecords.length} trained record(s) for retraining?\n\nThis will change their status from 'trained' to 'ready'.`
+      `Are you sure you want to mark all ${counts.trained} trained record(s) for retraining?\n\nThis will change their status from 'trained' to 'ready'.`
     );
 
     if (!confirmed) return;
@@ -259,20 +310,14 @@ export default function TrainingCurator() {
       return;
     }
 
-    // Update local state
-    setRecords(prev => prev.map(r => 
-      r.training_status === 'trained' 
-        ? { ...r, training_status: 'ready' as AiLogWithStats['training_status'] } 
-        : r
-    ));
-
     // Clear selected record if it was trained
     if (selectedRecord?.training_status === 'trained') {
       setSelectedRecord(null);
     }
 
     setBulkRetraining(false);
-    alert(`Successfully marked ${trainedRecords.length} record(s) for retraining!`);
+    await fetchRecords();
+    alert(`Successfully marked ${counts.trained} record(s) for retraining!`);
   };
 
   // ─── Open Detail ────────────────────────────────────────────────────────────
@@ -348,10 +393,13 @@ export default function TrainingCurator() {
 
   // ─── Filter Reset ───────────────────────────────────────────────────────────
 
-  const resetFilters = () => setFilters({
-    trainingStatus: '', speciesSearch: '', speciesChanged: '',
-    dateFrom: '', dateTo: '', minReviews: '',
-  });
+  const resetFilters = () => {
+    setFilters({
+      trainingStatus: '', speciesSearch: '', speciesChanged: '',
+      dateFrom: '', dateTo: '', minReviews: '',
+    });
+    setCurrentPage(1);
+  };
 
   // ─── Verdict Badge ──────────────────────────────────────────────────────────
 
@@ -398,6 +446,27 @@ export default function TrainingCurator() {
       <div className="text-gray-500">Loading Training Curator...</div>
     </div>
   );
+
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+
+  const getPaginationItems = (): Array<number | '...'> => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    if (safeCurrentPage <= 4) {
+      return [1, 2, 3, 4, 5, '...', totalPages];
+    }
+
+    if (safeCurrentPage >= totalPages - 3) {
+      return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    }
+
+    return [1, '...', safeCurrentPage - 1, safeCurrentPage, safeCurrentPage + 1, '...', totalPages];
+  };
+
+  const paginationItems = getPaginationItems();
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -504,7 +573,7 @@ export default function TrainingCurator() {
         </div>
         <div className="flex justify-between items-center mt-3">
           <span className="text-sm text-gray-500">
-            Showing {filtered.length} of {records.length} records
+            Showing {records.length} of {totalFiltered} filtered records ({totalRecords} total)
           </span>
           <button
             onClick={resetFilters}
@@ -516,37 +585,12 @@ export default function TrainingCurator() {
       </div>
 
       {/* ── Records Grid ── */}
-      {filtered.length === 0 ? (
+      {totalFiltered === 0 ? (
         <div className="text-center py-16 text-gray-400">No records found.</div>
       ) : (
-        (() => {
-          const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-          const safeCurrentPage = Math.min(currentPage, totalPages);
-          const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
-          const pageItems = filtered.slice(startIndex, startIndex + PAGE_SIZE);
-
-          const getPaginationItems = (): Array<number | '...'> => {
-            if (totalPages <= 7) {
-              return Array.from({ length: totalPages }, (_, index) => index + 1);
-            }
-
-            if (safeCurrentPage <= 4) {
-              return [1, 2, 3, 4, 5, '...', totalPages];
-            }
-
-            if (safeCurrentPage >= totalPages - 3) {
-              return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
-            }
-
-            return [1, '...', safeCurrentPage - 1, safeCurrentPage, safeCurrentPage + 1, '...', totalPages];
-          };
-
-          const paginationItems = getPaginationItems();
-
-          return (
-            <>
+        <>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {pageItems.map(record => (
+          {records.map(record => (
             <div
               key={record.id}
               onClick={() => openDetail(record)}
@@ -695,11 +739,9 @@ export default function TrainingCurator() {
         )}
 
         <div className="mt-6 text-center text-sm text-gray-500">
-          Page {safeCurrentPage} of {totalPages} • Showing {pageItems.length} of {filtered.length} filtered records ({records.length} total)
+          Page {safeCurrentPage} of {totalPages} • Showing {records.length} of {totalFiltered} filtered records ({totalRecords} total)
         </div>
-            </>
-          );
-        })()
+        </>
       )}
 
       {/* ── Detail Modal ── */}

@@ -19,7 +19,8 @@ type RecordWithStats = {
 export default function RecordsGallery() {
   const PAGE_SIZE = 25;
   const [records, setRecords] = useState<RecordWithStats[]>([]);
-  const [filteredRecords, setFilteredRecords] = useState<RecordWithStats[]>([]);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalFiltered, setTotalFiltered] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -39,11 +40,54 @@ export default function RecordsGallery() {
 
   useEffect(() => {
     fetchRecords();
-  }, [sortOrder]);
+  }, [currentPage, searchTerm, userAction, confidenceLevel, reviewStatus, sortOrder, viewMode]);
 
   useEffect(() => {
-    filterRecords();
-  }, [searchTerm, userAction, confidenceLevel, reviewStatus, sortOrder, viewMode, records]);
+    setCurrentPage(1);
+  }, [searchTerm, userAction, confidenceLevel, reviewStatus, sortOrder, viewMode]);
+
+  const applyFiltersToQuery = (query: any, userId: string | null) => {
+    let filteredQuery = query;
+
+    filteredQuery = filteredQuery.neq('uploader_role', 'admin');
+
+    if (viewMode === 'mine') {
+      if (userId) {
+        filteredQuery = filteredQuery.eq('user_id', userId);
+      } else {
+        filteredQuery = filteredQuery.eq('user_id', '__no_user__');
+      }
+    }
+
+    if (searchTerm.trim()) {
+      const q = searchTerm.trim().replace(/,/g, ' ');
+      filteredQuery = filteredQuery.or(
+        `predicted_common_name.ilike.%${q}%,final_common_name.ilike.%${q}%,predicted_scientific_name.ilike.%${q}%`
+      );
+    }
+
+    if (userAction !== 'ALL') {
+      filteredQuery = filteredQuery.eq('user_action', userAction);
+    }
+
+    if (confidenceLevel === 'HIGH') {
+      filteredQuery = filteredQuery.gte('predicted_confidence', 0.9);
+    } else if (confidenceLevel === 'MEDIUM') {
+      filteredQuery = filteredQuery.gte('predicted_confidence', 0.75).lt('predicted_confidence', 0.9);
+    } else if (confidenceLevel === 'LOW') {
+      filteredQuery = filteredQuery.gte('predicted_confidence', 0.5).lt('predicted_confidence', 0.75);
+    } else if (confidenceLevel === 'VERY_LOW') {
+      filteredQuery = filteredQuery.lt('predicted_confidence', 0.5);
+    }
+
+    if (reviewStatus === 'PENDING_REVIEW') {
+      filteredQuery = filteredQuery.eq('review_count', 0);
+    } else if (reviewStatus === 'REVIEWED') {
+      filteredQuery = filteredQuery.gt('review_count', 0);
+    }
+
+    return filteredQuery;
+  };
 
   const fetchRecords = async () => {
     setLoading(true);
@@ -52,17 +96,40 @@ export default function RecordsGallery() {
     const { data: { user } } = await supabase.auth.getUser();
     setCurrentUser(user);
 
-    // Fetch all records with aggregated stats in one query.
-    const { data: allRecords, error } = await supabase
-      .from('ai_logs_with_stats')
-      .select('id, image_url, predicted_common_name, predicted_scientific_name, final_common_name, predicted_confidence, user_action, user_id, created_at, review_count')
-      .or('uploader_role.neq.admin,uploader_role.is.null')
-      .order('created_at', { ascending: sortOrder === 'ASC' });
+    const from = (currentPage - 1) * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+
+    const pageQuery = applyFiltersToQuery(
+      supabase
+        .from('ai_logs_with_stats')
+        .select('id, image_url, predicted_common_name, predicted_scientific_name, final_common_name, predicted_confidence, user_action, user_id, created_at, review_count')
+        .order('created_at', { ascending: sortOrder === 'ASC' })
+        .range(from, to),
+      user?.id || null
+    );
+
+    const filteredCountQuery = applyFiltersToQuery(
+      supabase
+        .from('ai_logs_with_stats')
+        .select('id', { count: 'exact', head: true }),
+      user?.id || null
+    );
+
+    const [pageResult, filteredCountResult, totalCountResult] = await Promise.all([
+      pageQuery,
+      filteredCountQuery,
+      supabase
+        .from('ai_logs_with_stats')
+        .select('id', { count: 'exact', head: true })
+        .neq('uploader_role', 'admin'),
+    ]);
+
+    const { data: allRecords, error } = pageResult;
 
     if (error) {
       console.error('Error loading records:', error);
       setRecords([]);
-      setFilteredRecords([]);
+      setTotalFiltered(0);
       setLoading(false);
       return;
     }
@@ -73,61 +140,10 @@ export default function RecordsGallery() {
     }));
 
     setRecords(normalizedRecords);
-    setFilteredRecords(normalizedRecords);
-    setCurrentPage(1);
+    setTotalFiltered(filteredCountResult.count || 0);
+    setTotalRecords(totalCountResult.count || 0);
 
     setLoading(false);
-  };
-
-  const filterRecords = () => {
-    let filtered = [...records];
-
-    // Sort order
-    filtered.sort((a, b) => {
-      const dateA = new Date(a.created_at).getTime();
-      const dateB = new Date(b.created_at).getTime();
-      return sortOrder === 'DESC' ? dateB - dateA : dateA - dateB;
-    });
-
-    // View mode filter (all vs my records)
-    if (viewMode === 'mine' && currentUser) {
-      filtered = filtered.filter(r => r.user_id === currentUser.id);
-    }
-
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(r => 
-        r.predicted_common_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.final_common_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.predicted_scientific_name?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // User Action filter
-    if (userAction !== 'ALL') {
-      filtered = filtered.filter(r => r.user_action === userAction);
-    }
-
-    // AI Confidence filter
-    if (confidenceLevel === 'HIGH') {
-      filtered = filtered.filter(r => r.predicted_confidence >= 0.9);
-    } else if (confidenceLevel === 'MEDIUM') {
-      filtered = filtered.filter(r => r.predicted_confidence >= 0.75 && r.predicted_confidence < 0.9);
-    } else if (confidenceLevel === 'LOW') {
-      filtered = filtered.filter(r => r.predicted_confidence >= 0.5 && r.predicted_confidence < 0.75);
-    } else if (confidenceLevel === 'VERY_LOW') {
-      filtered = filtered.filter(r => r.predicted_confidence < 0.5);
-    }
-
-    // Review Status filter
-    if (reviewStatus === 'PENDING_REVIEW') {
-      filtered = filtered.filter(r => r.review_count === 0);
-    } else if (reviewStatus === 'REVIEWED') {
-      filtered = filtered.filter(r => r.review_count > 0);
-    }
-
-    setFilteredRecords(filtered);
-    setCurrentPage(1);
   };
 
   const resetFilters = () => {
@@ -140,11 +156,9 @@ export default function RecordsGallery() {
 
   if (loading) return <div className="p-10 text-center">Loading Records...</div>;
 
-  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
   const safeCurrentPage = Math.min(currentPage, totalPages);
-  const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
-  const endIndex = startIndex + PAGE_SIZE;
-  const visibleRecords = filteredRecords.slice(startIndex, endIndex);
+  const visibleRecords = records;
 
   const getPaginationItems = (): Array<number | '...'> => {
     if (totalPages <= 7) {
@@ -171,7 +185,7 @@ export default function RecordsGallery() {
           <div>
             <h1 className="text-3xl font-bold text-[#134a86]">Butterfly Records</h1>
             <p className="text-gray-600">
-              Click on any record to view details and expert reviews • {filteredRecords.length} {filteredRecords.length === 1 ? 'record' : 'records'} found
+              Click on any record to view details and expert reviews • {totalFiltered} {totalFiltered === 1 ? 'record' : 'records'} found
             </p>
           </div>
 
@@ -290,7 +304,7 @@ export default function RecordsGallery() {
           {/* Reset Button & Count */}
           <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
             <p className="text-sm text-gray-600">
-              Showing <span className="font-bold text-[#134a86]">{visibleRecords.length}</span> of <span className="font-bold">{filteredRecords.length}</span> filtered records
+              Showing <span className="font-bold text-[#134a86]">{visibleRecords.length}</span> of <span className="font-bold">{totalFiltered}</span> filtered records
             </p>
             <button 
               onClick={resetFilters}
@@ -303,7 +317,7 @@ export default function RecordsGallery() {
         </div>
 
         {/* Records Grid */}
-        {filteredRecords.length === 0 ? (
+        {totalFiltered === 0 ? (
           <div className="bg-white p-20 rounded-xl shadow-sm text-center">
             <p className="text-gray-500">No records found matching your filters.</p>
           </div>
@@ -394,7 +408,7 @@ export default function RecordsGallery() {
           </div>
         )}
 
-        {filteredRecords.length > 0 && totalPages > 1 && (
+        {totalFiltered > 0 && totalPages > 1 && (
           <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
             <button
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
@@ -440,9 +454,9 @@ export default function RecordsGallery() {
         )}
 
         {/* Pagination Info */}
-        {filteredRecords.length > 0 && (
+        {totalFiltered > 0 && (
           <div className="mt-8 text-center text-gray-500 text-sm">
-            Page {safeCurrentPage} of {totalPages} • Showing {visibleRecords.length} of {filteredRecords.length} filtered records ({records.length} total)
+            Page {safeCurrentPage} of {totalPages} • Showing {visibleRecords.length} of {totalFiltered} filtered records ({totalRecords} total)
           </div>
         )}
       </div>

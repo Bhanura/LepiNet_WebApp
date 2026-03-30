@@ -7,7 +7,7 @@ CREATE OR REPLACE VIEW ai_logs_with_stats AS
 SELECT 
     al.id,
     al.user_id,
-    u.role as uploader_role,
+    COALESCE(u.role, 'user') as uploader_role,
     al.image_url,
     al.predicted_id,
     al.predicted_confidence,
