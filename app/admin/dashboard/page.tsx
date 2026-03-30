@@ -306,10 +306,6 @@ export default function AdminDashboard() {
                 <p className="text-sm text-blue-700">Pending Verification Queue</p>
                 <p className="text-2xl font-bold text-blue-900">{pendingApplicants.length}</p>
               </div>
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                <p className="text-sm text-yellow-700">Unreviewed Records</p>
-                <p className="text-2xl font-bold text-yellow-900">{stats.unreviewedRecords}</p>
-              </div>
               <div className="bg-green-50 border border-green-200 rounded-xl p-4">
                 <p className="text-sm text-green-700">Verified Experts</p>
                 <p className="text-2xl font-bold text-green-900">{stats.verifiedExperts}</p>
