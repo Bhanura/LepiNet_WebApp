@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type Props = {
   src: string;
@@ -9,10 +9,19 @@ type Props = {
 
 export default function ProtectedImage({ src, alt, authorName, objectFit = 'cover' }: Props) {
   const [hasLoadError, setHasLoadError] = useState(false);
+  const [usingFallbackSource, setUsingFallbackSource] = useState(false);
+
+  const proxySrc = useMemo(() => {
+    if (!isSupabaseStorageUrl(src)) return src;
+    return `/api/image-proxy?url=${encodeURIComponent(src)}`;
+  }, [src]);
+
+  const effectiveSrc = usingFallbackSource ? src : proxySrc;
 
   // Cache failed URLs to avoid retry storms when the same broken URL appears many times.
   useEffect(() => {
     setHasLoadError(failedImageUrls.has(src));
+    setUsingFallbackSource(false);
   }, [src]);
 
   // We use the API route for the "Download" button to give them the watermarked version
@@ -39,7 +48,7 @@ export default function ProtectedImage({ src, alt, authorName, objectFit = 'cove
       {/* 1. The Image (Prevent right click) */}
       <div onContextMenu={(e) => e.preventDefault()} className="w-full h-full flex items-center justify-center">
         <img 
-            src={src} 
+          src={effectiveSrc}
             alt={alt} 
             loading="lazy"
             decoding="async"
@@ -52,7 +61,17 @@ export default function ProtectedImage({ src, alt, authorName, objectFit = 'cove
               objectFit: objectFit
             }}
             onError={(e) => {
-              console.error('Image failed to load:', src);
+              if (!usingFallbackSource && proxySrc !== src) {
+                // If proxy failed, try original source once.
+                setUsingFallbackSource(true);
+                return;
+              }
+
+              if (!loggedFailedImageUrls.has(src)) {
+                console.error('Image failed to load:', src);
+                loggedFailedImageUrls.add(src);
+              }
+
               failedImageUrls.add(src);
               setHasLoadError(true);
             }}
@@ -83,3 +102,13 @@ export default function ProtectedImage({ src, alt, authorName, objectFit = 'cove
 }
 
 const failedImageUrls = new Set<string>();
+const loggedFailedImageUrls = new Set<string>();
+
+function isSupabaseStorageUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.pathname.includes('/storage/v1/object/');
+  } catch {
+    return false;
+  }
+}
