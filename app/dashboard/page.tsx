@@ -9,6 +9,13 @@ export default function UserDashboard() {
   const [profile, setProfile] = useState<any>(null);
   const [myRecords, setMyRecords] = useState<any[]>([]);
   const [myReviews, setMyReviews] = useState<any[]>([]);
+  const [myReviewsCount, setMyReviewsCount] = useState(0);
+  const [myReviewStats, setMyReviewStats] = useState({
+    AGREE: 0,
+    CORRECT: 0,
+    UNSURE: 0,
+    NOT_BUTTERFLY: 0,
+  });
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'records' | 'reviews'>('overview');
@@ -46,15 +53,51 @@ export default function UserDashboard() {
 
     // 3. Get My Reviews (if verified expert)
     if (profile?.verification_status === 'verified') {
-      const { data: reviews } = await supabase
-        .from('expert_reviews')
-        .select(`
-          *,
-          ai_log:ai_logs(id, image_url, predicted_species_name)
-        `)
-        .eq('reviewer_id', user.id)
-        .order('created_at', { ascending: false });
-      setMyReviews(reviews || []);
+      const [reviewsResult, countResult] = await Promise.all([
+        supabase
+          .from('expert_reviews')
+          .select(`
+            id,
+            ai_log_id,
+            reviewer_id,
+            verdict,
+            agreed_with_ai,
+            identified_species_name,
+            is_new_discovery,
+            identification_notes,
+            created_at,
+            image_quality_rating,
+            ai_log:ai_logs(id, image_url, predicted_id, final_species_id, created_at)
+          `)
+          .eq('reviewer_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('expert_reviews')
+          .select('id', { count: 'exact', head: true })
+          .eq('reviewer_id', user.id),
+      ]);
+
+      if (reviewsResult.error) {
+        console.error('Error loading my reviews:', reviewsResult.error);
+        setMyReviews([]);
+        setMyReviewsCount(0);
+      } else {
+        const reviews = reviewsResult.data || [];
+        setMyReviews(reviews);
+        setMyReviewsCount(countResult.count ?? reviews.length);
+
+        const verdictStats = reviews.reduce(
+          (acc: { AGREE: number; CORRECT: number; UNSURE: number; NOT_BUTTERFLY: number }, review: any) => {
+            const currentVerdict = review?.verdict as 'AGREE' | 'CORRECT' | 'UNSURE' | 'NOT_BUTTERFLY' | null;
+            if (currentVerdict && acc[currentVerdict] !== undefined) {
+              acc[currentVerdict] += 1;
+            }
+            return acc;
+          },
+          { AGREE: 0, CORRECT: 0, UNSURE: 0, NOT_BUTTERFLY: 0 }
+        );
+        setMyReviewStats(verdictStats);
+      }
     }
 
     // 4. Get Notifications
@@ -162,7 +205,7 @@ export default function UserDashboard() {
                 <div className="flex items-center gap-4">
                   <div className="bg-green-100 p-3 rounded-full text-green-600 text-2xl">✓</div>
                   <div>
-                    <p className="text-2xl font-bold text-gray-800">{myReviews.length}</p>
+                    <p className="text-2xl font-bold text-gray-800">{myReviewsCount}</p>
                     <p className="text-sm text-gray-500">Reviews Submitted</p>
                   </div>
                 </div>
@@ -200,7 +243,7 @@ export default function UserDashboard() {
               onClick={() => setActiveTab('reviews')}
               className={`pb-2 px-4 font-medium ${activeTab === 'reviews' ? 'text-[#134a86] border-b-2 border-[#134a86]' : 'text-gray-500'}`}
             >
-              My Reviews ({myReviews.length})
+              My Reviews ({myReviewsCount})
             </button>
           )}
         </div>
@@ -208,6 +251,45 @@ export default function UserDashboard() {
         {/* Tab Content: Overview */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            {isVerifiedExpert && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+                <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-800">Expert Review Summary</h3>
+                    <p className="text-sm text-gray-500">Your personal review outcomes and activity</p>
+                  </div>
+                  <Link
+                    href="/records"
+                    className="inline-flex items-center px-4 py-2 bg-[#134a86] text-white rounded-lg hover:bg-blue-900 font-medium"
+                  >
+                    Review More Records
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                    <p className="text-xs text-gray-500">Total</p>
+                    <p className="text-xl font-bold text-gray-800">{myReviewsCount}</p>
+                  </div>
+                  <div className="rounded-lg border border-green-200 p-3 bg-green-50">
+                    <p className="text-xs text-green-700">Agree</p>
+                    <p className="text-xl font-bold text-green-800">{myReviewStats.AGREE}</p>
+                  </div>
+                  <div className="rounded-lg border border-blue-200 p-3 bg-blue-50">
+                    <p className="text-xs text-blue-700">Correct</p>
+                    <p className="text-xl font-bold text-blue-800">{myReviewStats.CORRECT}</p>
+                  </div>
+                  <div className="rounded-lg border border-yellow-200 p-3 bg-yellow-50">
+                    <p className="text-xs text-yellow-700">Unsure</p>
+                    <p className="text-xl font-bold text-yellow-800">{myReviewStats.UNSURE}</p>
+                  </div>
+                  <div className="rounded-lg border border-red-200 p-3 bg-red-50">
+                    <p className="text-xs text-red-700">Not Butterfly</p>
+                    <p className="text-xl font-bold text-red-800">{myReviewStats.NOT_BUTTERFLY}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
               <h3 className="text-lg font-bold mb-4 text-gray-800">Quick Actions</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -385,11 +467,15 @@ export default function UserDashboard() {
                             </p>
                           </div>
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                            review.confidence_level === 'certain' 
-                              ? 'bg-green-100 text-green-700' 
-                              : 'bg-yellow-100 text-yellow-700'
+                            review.verdict === 'AGREE'
+                              ? 'bg-green-100 text-green-700'
+                              : review.verdict === 'CORRECT'
+                                ? 'bg-blue-100 text-blue-700'
+                                : review.verdict === 'NOT_BUTTERFLY'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-yellow-100 text-yellow-700'
                           }`}>
-                            {review.confidence_level}
+                            {review.verdict || 'UNSURE'}
                           </span>
                         </div>
                         {review.identification_notes && (
