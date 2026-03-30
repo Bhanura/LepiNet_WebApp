@@ -139,7 +139,7 @@ export default function Home() {
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-800 mb-4">How It Works</h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              From field observation to verified data in three simple steps
+              From field observation to verified data in Two simple steps
             </p>
           </div>
 
@@ -164,7 +164,7 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all hover:-translate-y-2 border border-gray-100">
+          {/*  <div className="group bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl transition-all hover:-translate-y-2 border border-gray-100">
               <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-600 rounded-2xl flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform shadow-lg">
                 🌍
               </div>
@@ -172,7 +172,7 @@ export default function Home() {
               <p className="text-gray-600 leading-relaxed">
                 Contributing to the national biodiversity database for conservation and future research.
               </p>
-            </div>
+            </div> */}
           </div>
         </div>
       </section>
