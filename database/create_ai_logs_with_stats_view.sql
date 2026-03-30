@@ -7,6 +7,7 @@ CREATE OR REPLACE VIEW ai_logs_with_stats AS
 SELECT 
     al.id,
     al.user_id,
+    u.role as uploader_role,
     al.image_url,
     al.predicted_id,
     al.predicted_confidence,
@@ -42,11 +43,13 @@ SELECT
     (al.predicted_id IS DISTINCT FROM al.final_species_id) as species_changed
 
 FROM ai_logs al
+LEFT JOIN users u ON al.user_id = u.id
 LEFT JOIN species ps ON al.predicted_id = ps.butterfly_id
 LEFT JOIN species fs ON al.final_species_id = fs.butterfly_id
 LEFT JOIN expert_reviews er ON al.id = er.ai_log_id
 GROUP BY 
     al.id,
+    u.role,
     ps.common_name_english, ps.species_name_binomial, ps.common_name_sinhalese,
     fs.common_name_english, fs.species_name_binomial, fs.common_name_sinhalese;
 

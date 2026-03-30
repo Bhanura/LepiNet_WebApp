@@ -56,6 +56,7 @@ export default function RecordsGallery() {
     const { data: allRecords, error } = await supabase
       .from('ai_logs_with_stats')
       .select('id, image_url, predicted_common_name, predicted_scientific_name, final_common_name, predicted_confidence, user_action, user_id, created_at, review_count')
+      .or('uploader_role.neq.admin,uploader_role.is.null')
       .order('created_at', { ascending: sortOrder === 'ASC' });
 
     if (error) {
