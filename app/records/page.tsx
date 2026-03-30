@@ -17,10 +17,10 @@ type RecordWithStats = {
 };
 
 export default function RecordsGallery() {
-  const PAGE_SIZE = 24;
+  const PAGE_SIZE = 25;
   const [records, setRecords] = useState<RecordWithStats[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<RecordWithStats[]>([]);
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [currentPage, setCurrentPage] = useState(1);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -73,7 +73,7 @@ export default function RecordsGallery() {
 
     setRecords(normalizedRecords);
     setFilteredRecords(normalizedRecords);
-    setVisibleCount(PAGE_SIZE);
+    setCurrentPage(1);
 
     setLoading(false);
   };
@@ -126,7 +126,7 @@ export default function RecordsGallery() {
     }
 
     setFilteredRecords(filtered);
-    setVisibleCount(PAGE_SIZE);
+    setCurrentPage(1);
   };
 
   const resetFilters = () => {
@@ -139,8 +139,29 @@ export default function RecordsGallery() {
 
   if (loading) return <div className="p-10 text-center">Loading Records...</div>;
 
-  const visibleRecords = filteredRecords.slice(0, visibleCount);
-  const hasMore = filteredRecords.length > visibleCount;
+  const totalPages = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+  const endIndex = startIndex + PAGE_SIZE;
+  const visibleRecords = filteredRecords.slice(startIndex, endIndex);
+
+  const getPaginationItems = (): Array<number | '...'> => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, index) => index + 1);
+    }
+
+    if (safeCurrentPage <= 4) {
+      return [1, 2, 3, 4, 5, '...', totalPages];
+    }
+
+    if (safeCurrentPage >= totalPages - 3) {
+      return [1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages];
+    }
+
+    return [1, '...', safeCurrentPage - 1, safeCurrentPage, safeCurrentPage + 1, '...', totalPages];
+  };
+
+  const paginationItems = getPaginationItems();
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -372,13 +393,47 @@ export default function RecordsGallery() {
           </div>
         )}
 
-        {hasMore && (
-          <div className="mt-8 flex justify-center">
+        {filteredRecords.length > 0 && totalPages > 1 && (
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2">
             <button
-              onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
-              className="px-6 py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={safeCurrentPage === 1}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Load More
+              Previous
+            </button>
+
+            {paginationItems.map((item, index) => {
+              if (item === '...') {
+                return (
+                  <span key={`ellipsis-${index}`} className="px-2 text-gray-500">
+                    ...
+                  </span>
+                );
+              }
+
+              const isActive = item === safeCurrentPage;
+              return (
+                <button
+                  key={`page-${item}`}
+                  onClick={() => setCurrentPage(item)}
+                  className={`min-w-10 px-3 py-2 rounded-lg text-sm font-medium border ${
+                    isActive
+                      ? 'bg-[#134a86] text-white border-[#134a86]'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {item}
+                </button>
+              );
+            })}
+
+            <button
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={safeCurrentPage === totalPages}
+              className="px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
             </button>
           </div>
         )}
@@ -386,7 +441,7 @@ export default function RecordsGallery() {
         {/* Pagination Info */}
         {filteredRecords.length > 0 && (
           <div className="mt-8 text-center text-gray-500 text-sm">
-            Showing {visibleRecords.length} of {filteredRecords.length} filtered records ({records.length} total)
+            Page {safeCurrentPage} of {totalPages} • Showing {visibleRecords.length} of {filteredRecords.length} filtered records ({records.length} total)
           </div>
         )}
       </div>
