@@ -1,4 +1,4 @@
-import Image from 'next/image';
+import { useEffect, useState } from 'react';
 
 type Props = {
   src: string;
@@ -8,8 +8,31 @@ type Props = {
 };
 
 export default function ProtectedImage({ src, alt, authorName, objectFit = 'cover' }: Props) {
+  const [hasLoadError, setHasLoadError] = useState(false);
+
+  // Cache failed URLs to avoid retry storms when the same broken URL appears many times.
+  useEffect(() => {
+    setHasLoadError(failedImageUrls.has(src));
+  }, [src]);
+
   // We use the API route for the "Download" button to give them the watermarked version
   const downloadLink = `/api/watermark?url=${encodeURIComponent(src)}&author=${encodeURIComponent(authorName)}`;
+
+  if (hasLoadError) {
+    return (
+      <div className="relative group w-full h-full flex items-center justify-center bg-gray-900">
+        <div className="text-center text-gray-300 px-4">
+          <p className="text-sm font-medium">Image unavailable</p>
+          <p className="text-xs opacity-80 mt-1">The source image could not be loaded.</p>
+        </div>
+
+        <div className="absolute bottom-3 right-3 px-3 py-2 bg-black/70 text-white text-sm backdrop-blur-sm rounded-lg pointer-events-none shadow-lg border border-white/20">
+          <div className="font-bold">LepiNet</div>
+          <div className="text-xs opacity-90">© {authorName}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative group w-full h-full flex items-center justify-center bg-black">
@@ -18,6 +41,8 @@ export default function ProtectedImage({ src, alt, authorName, objectFit = 'cove
         <img 
             src={src} 
             alt={alt} 
+            loading="lazy"
+            decoding="async"
             style={{
               display: 'block',
               maxWidth: '100%',
@@ -28,7 +53,8 @@ export default function ProtectedImage({ src, alt, authorName, objectFit = 'cove
             }}
             onError={(e) => {
               console.error('Image failed to load:', src);
-              e.currentTarget.style.display = 'none';
+              failedImageUrls.add(src);
+              setHasLoadError(true);
             }}
         />
       </div>
@@ -55,3 +81,5 @@ export default function ProtectedImage({ src, alt, authorName, objectFit = 'cove
     </div>
   );
 }
+
+const failedImageUrls = new Set<string>();

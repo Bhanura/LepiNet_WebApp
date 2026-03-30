@@ -42,10 +42,6 @@ export default function RecordsGallery() {
     fetchRecords();
   }, [currentPage, searchTerm, userAction, confidenceLevel, reviewStatus, sortOrder, viewMode]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, userAction, confidenceLevel, reviewStatus, sortOrder, viewMode]);
-
   const applyFiltersToQuery = (query: any, userId: string | null) => {
     let filteredQuery = query;
 
@@ -147,6 +143,7 @@ export default function RecordsGallery() {
   };
 
   const resetFilters = () => {
+    setCurrentPage(1);
     setSearchTerm('');
     setUserAction('ALL');
     setConfidenceLevel('ALL');
@@ -193,7 +190,10 @@ export default function RecordsGallery() {
           {currentUser && (
             <div className="flex gap-2 bg-white rounded-lg p-1 border border-gray-200">
               <button
-                onClick={() => setViewMode('all')}
+                onClick={() => {
+                  setCurrentPage(1);
+                  setViewMode('all');
+                }}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition ${
                   viewMode === 'all' 
                     ? 'bg-blue-600 text-white' 
@@ -203,7 +203,10 @@ export default function RecordsGallery() {
                 All Records
               </button>
               <button
-                onClick={() => setViewMode('mine')}
+                onClick={() => {
+                  setCurrentPage(1);
+                  setViewMode('mine');
+                }}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition ${
                   viewMode === 'mine' 
                     ? 'bg-blue-600 text-white' 
@@ -230,7 +233,10 @@ export default function RecordsGallery() {
                 placeholder="Search species..." 
                 className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) => {
+                  setCurrentPage(1);
+                  setSearchTerm(e.target.value);
+                }}
               />
             </div>
 
@@ -241,7 +247,10 @@ export default function RecordsGallery() {
               </label>
               <select 
                 value={sortOrder}
-                onChange={(e) => setSortOrder(e.target.value as 'ASC' | 'DESC')}
+                onChange={(e) => {
+                  setCurrentPage(1);
+                  setSortOrder(e.target.value as 'ASC' | 'DESC');
+                }}
                 className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
                 <option value="DESC">⬇️ Newest First</option>
@@ -256,7 +265,10 @@ export default function RecordsGallery() {
               </label>
               <select 
                 value={userAction}
-                onChange={(e) => setUserAction(e.target.value)}
+                onChange={(e) => {
+                  setCurrentPage(1);
+                  setUserAction(e.target.value);
+                }}
                 className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
                 <option value="ALL">All Actions</option>
@@ -273,7 +285,10 @@ export default function RecordsGallery() {
               </label>
               <select 
                 value={confidenceLevel}
-                onChange={(e) => setConfidenceLevel(e.target.value)}
+                onChange={(e) => {
+                  setCurrentPage(1);
+                  setConfidenceLevel(e.target.value);
+                }}
                 className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
                 <option value="ALL">All Levels</option>
@@ -291,7 +306,10 @@ export default function RecordsGallery() {
               </label>
               <select 
                 value={reviewStatus}
-                onChange={(e) => setReviewStatus(e.target.value)}
+                onChange={(e) => {
+                  setCurrentPage(1);
+                  setReviewStatus(e.target.value);
+                }}
                 className="w-full p-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
               >
                 <option value="ALL">All Records</option>

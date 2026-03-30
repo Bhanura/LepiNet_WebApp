@@ -238,9 +238,10 @@ export default function TrainingCurator() {
 
   useEffect(() => { fetchRecords(); }, [fetchRecords]);
 
-  useEffect(() => {
+  const updateFilters = (updater: (prev: Filters) => Filters) => {
     setCurrentPage(1);
-  }, [filters]);
+    setFilters(updater);
+  };
 
   useEffect(() => {
     const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
@@ -496,7 +497,7 @@ export default function TrainingCurator() {
           ].map(s => (
             <button
               key={s.key}
-              onClick={() => setFilters(f => ({ ...f, trainingStatus: f.trainingStatus === s.key ? '' : s.key }))}
+              onClick={() => updateFilters(f => ({ ...f, trainingStatus: f.trainingStatus === s.key ? '' : s.key }))}
               className={`p-4 rounded-xl border-2 text-left transition-all ${s.color} ${filters.trainingStatus === s.key ? 'ring-2 ring-offset-2 ring-blue-500' : 'hover:shadow-md'}`}
             >
               <div className="text-2xl font-bold">{counts[s.key as keyof typeof counts]}</div>
@@ -527,12 +528,12 @@ export default function TrainingCurator() {
             type="text"
             placeholder="Search species name..."
             value={filters.speciesSearch}
-            onChange={e => setFilters(f => ({ ...f, speciesSearch: e.target.value }))}
+            onChange={e => updateFilters(f => ({ ...f, speciesSearch: e.target.value }))}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <select
             value={filters.trainingStatus}
-            onChange={e => setFilters(f => ({ ...f, trainingStatus: e.target.value }))}
+            onChange={e => updateFilters(f => ({ ...f, trainingStatus: e.target.value }))}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Status</option>
@@ -543,7 +544,7 @@ export default function TrainingCurator() {
           </select>
           <select
             value={filters.speciesChanged}
-            onChange={e => setFilters(f => ({ ...f, speciesChanged: e.target.value }))}
+            onChange={e => updateFilters(f => ({ ...f, speciesChanged: e.target.value }))}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All Records</option>
@@ -553,20 +554,20 @@ export default function TrainingCurator() {
           <input
             type="date"
             value={filters.dateFrom}
-            onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
+            onChange={e => updateFilters(f => ({ ...f, dateFrom: e.target.value }))}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <input
             type="date"
             value={filters.dateTo}
-            onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
+            onChange={e => updateFilters(f => ({ ...f, dateTo: e.target.value }))}
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <input
             type="number"
             placeholder="Min reviews..."
             value={filters.minReviews}
-            onChange={e => setFilters(f => ({ ...f, minReviews: e.target.value }))}
+            onChange={e => updateFilters(f => ({ ...f, minReviews: e.target.value }))}
             min="0"
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
