@@ -6,23 +6,21 @@ import Link from 'next/link';
 type RecordWithStats = {
   id: string;
   image_url: string;
-  predicted_species_name: string;
-  final_species_name: string;
+  predicted_common_name: string | null;
+  predicted_scientific_name: string | null;
+  final_common_name: string | null;
   predicted_confidence: number;
   user_action: string;
   user_id: string;
   created_at: string;
   review_count: number;
-  species_details?: {
-    common_name_english: string;
-    species_name_binomial: string;
-    family: string;
-  } | null;
 };
 
 export default function RecordsGallery() {
+  const PAGE_SIZE = 24;
   const [records, setRecords] = useState<RecordWithStats[]>([]);
   const [filteredRecords, setFilteredRecords] = useState<RecordWithStats[]>([]);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   
@@ -48,48 +46,34 @@ export default function RecordsGallery() {
   }, [searchTerm, userAction, confidenceLevel, reviewStatus, sortOrder, viewMode, records]);
 
   const fetchRecords = async () => {
+    setLoading(true);
+
     // Get current user
     const { data: { user } } = await supabase.auth.getUser();
     setCurrentUser(user);
 
-    // Fetch all records with review counts
-    const { data: allRecords } = await supabase
-      .from('ai_logs')
-      .select('*')
+    // Fetch all records with aggregated stats in one query.
+    const { data: allRecords, error } = await supabase
+      .from('ai_logs_with_stats')
+      .select('id, image_url, predicted_common_name, predicted_scientific_name, final_common_name, predicted_confidence, user_action, user_id, created_at, review_count')
       .order('created_at', { ascending: sortOrder === 'ASC' });
 
-    if (allRecords) {
-      // Fetch review counts and species details for each record
-      const recordsWithStats = await Promise.all(
-        allRecords.map(async (record) => {
-          // Get review count
-          const { count } = await supabase
-            .from('expert_reviews')
-            .select('*', { count: 'exact', head: true })
-            .eq('ai_log_id', record.id);
-
-          // Get species details if predicted_id exists
-          let speciesDetails = null;
-          if (record.predicted_id) {
-            const { data: species } = await supabase
-              .from('species')
-              .select('common_name_english, species_name_binomial, family')
-              .eq('butterfly_id', record.predicted_id)
-              .single();
-            speciesDetails = species;
-          }
-
-          return {
-            ...record,
-            review_count: count || 0,
-            species_details: speciesDetails,
-          };
-        })
-      );
-
-      setRecords(recordsWithStats);
-      setFilteredRecords(recordsWithStats);
+    if (error) {
+      console.error('Error loading records:', error);
+      setRecords([]);
+      setFilteredRecords([]);
+      setLoading(false);
+      return;
     }
+
+    const normalizedRecords = (allRecords || []).map((record: any) => ({
+      ...record,
+      review_count: record.review_count || 0,
+    }));
+
+    setRecords(normalizedRecords);
+    setFilteredRecords(normalizedRecords);
+    setVisibleCount(PAGE_SIZE);
 
     setLoading(false);
   };
@@ -112,8 +96,9 @@ export default function RecordsGallery() {
     // Search filter
     if (searchTerm) {
       filtered = filtered.filter(r => 
-        r.predicted_species_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        r.final_species_name?.toLowerCase().includes(searchTerm.toLowerCase())
+        r.predicted_common_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.final_common_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        r.predicted_scientific_name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -141,6 +126,7 @@ export default function RecordsGallery() {
     }
 
     setFilteredRecords(filtered);
+    setVisibleCount(PAGE_SIZE);
   };
 
   const resetFilters = () => {
@@ -152,6 +138,9 @@ export default function RecordsGallery() {
   };
 
   if (loading) return <div className="p-10 text-center">Loading Records...</div>;
+
+  const visibleRecords = filteredRecords.slice(0, visibleCount);
+  const hasMore = filteredRecords.length > visibleCount;
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
@@ -279,7 +268,7 @@ export default function RecordsGallery() {
           {/* Reset Button & Count */}
           <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
             <p className="text-sm text-gray-600">
-              Showing <span className="font-bold text-[#134a86]">{filteredRecords.length}</span> of <span className="font-bold">{records.length}</span> records
+              Showing <span className="font-bold text-[#134a86]">{visibleRecords.length}</span> of <span className="font-bold">{filteredRecords.length}</span> filtered records
             </p>
             <button 
               onClick={resetFilters}
@@ -298,7 +287,7 @@ export default function RecordsGallery() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
-            {filteredRecords.map((record) => (
+            {visibleRecords.map((record) => (
               <Link 
                 key={record.id} 
                 href={`/records/${record.id}`} 
@@ -314,12 +303,15 @@ export default function RecordsGallery() {
                       src={record.image_url} 
                       alt="Butterfly" 
                       className="w-full h-full object-cover"
+                      loading="lazy"
+                      decoding="async"
+                      fetchPriority="low"
                       onContextMenu={(e) => e.preventDefault()}
                       draggable={false}
                     />
                     
                     {/* Status Badge */}
-                    {record.final_species_name ? (
+                    {record.final_common_name ? (
                       <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full shadow font-medium">
                         ✓ Verified
                       </div>
@@ -340,11 +332,11 @@ export default function RecordsGallery() {
                   {/* Card Content */}
                   <div className="p-4">
                     <h3 className="font-bold text-lg text-gray-800 group-hover:text-[#134a86] transition truncate">
-                      {record.species_details?.common_name_english || record.final_species_name || record.predicted_species_name || 'Unknown Species'}
+                      {record.final_common_name || record.predicted_common_name || 'Unknown Species'}
                     </h3>
-                    {record.species_details && (
+                    {record.predicted_scientific_name && (
                       <p className="text-sm italic text-gray-600 mt-1 truncate">
-                        {record.species_details.species_name_binomial}
+                        {record.predicted_scientific_name}
                       </p>
                     )}
                     
@@ -352,7 +344,7 @@ export default function RecordsGallery() {
                       <span className="text-xs text-gray-500">
                         {new Date(record.created_at).toLocaleDateString()}
                       </span>
-                      {!record.final_species_name && (
+                      {!record.final_common_name && (
                         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
                           {Math.round(record.predicted_confidence * 100)}% AI
                         </span>
@@ -366,7 +358,7 @@ export default function RecordsGallery() {
                           <span>💬</span>
                           {record.review_count} {record.review_count === 1 ? 'Review' : 'Reviews'}
                         </span>
-                        {record.final_species_name && (
+                        {record.final_common_name && (
                           <span className="text-green-600 font-medium">
                             ✓ Expert Verified
                           </span>
@@ -380,10 +372,21 @@ export default function RecordsGallery() {
           </div>
         )}
 
+        {hasMore && (
+          <div className="mt-8 flex justify-center">
+            <button
+              onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
+              className="px-6 py-3 bg-white border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Load More
+            </button>
+          </div>
+        )}
+
         {/* Pagination Info */}
         {filteredRecords.length > 0 && (
           <div className="mt-8 text-center text-gray-500 text-sm">
-            Showing {filteredRecords.length} of {records.length} total records
+            Showing {visibleRecords.length} of {filteredRecords.length} filtered records ({records.length} total)
           </div>
         )}
       </div>
