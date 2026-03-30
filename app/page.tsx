@@ -44,27 +44,29 @@ export default function Home() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <div className="grid md:grid-cols-2 gap-6 mb-8">
             <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
               <div className="text-4xl mb-4">📱</div>
               <h3 className="text-xl font-bold mb-2">Mobile App</h3>
               <p className="text-gray-600 mb-4">Download our mobile app to identify butterflies in the field.</p>
-              <button className="text-[#134a86] font-medium hover:underline">Coming Soon</button>
+              <button className="text-[#134a86] font-medium hover:underline">Download From Here</button>
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
               <div className="text-4xl mb-4">📊</div>
-              <h3 className="text-xl font-bold mb-2">My Records</h3>
-              <p className="text-gray-600 mb-4">View and manage your butterfly observations and submissions.</p>
-              <button className="text-[#134a86] font-medium hover:underline">View Records</button>
+              <h3 className="text-xl font-bold mb-2">Web Portal</h3>
+              <p className="text-gray-600 mb-4">View and contribute to the butterfly observations and submissions.</p>
+              <Link className="text-[#134a86] font-medium hover:underline" href="/dashboard">
+                Go to Dashboard
+              </Link>
             </div>
 
-            <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
+            {/* <div className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition">
               <div className="text-4xl mb-4">🦋</div>
               <h3 className="text-xl font-bold mb-2">Species Database</h3>
               <p className="text-gray-600 mb-4">Explore the complete butterfly species database of Sri Lanka.</p>
               <button className="text-[#134a86] font-medium hover:underline">Browse Species</button>
-            </div>
+            </div> */}
           </div>
 
           {/* Info Banner */}
