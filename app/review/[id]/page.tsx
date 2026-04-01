@@ -29,7 +29,7 @@ export default function ReviewDetail() {
   const [antennaeVisible, setAntennaeVisible] = useState(false);
 
   // Stage 2: Identification State
-  const [verdict, setVerdict] = useState<'AGREE' | 'CORRECT' | 'UNSURE' | 'NOT_BUTTERFLY'>('AGREE');
+  const [verdict, setVerdict] = useState<'AGREE' | 'CORRECT' | 'NOT_BUTTERFLY'>('AGREE');
   const [correctSpecies, setCorrectSpecies] = useState('');
   const [isDiscovery, setIsDiscovery] = useState(false);
   const [speciesSearch, setSpeciesSearch] = useState('');
@@ -152,8 +152,6 @@ export default function ReviewDetail() {
       identifiedSpeciesName = predictedSpecies?.common_name_english || log.predicted_species_name;
     } else if (verdict === 'CORRECT' && correctSpecies) {
       identifiedSpeciesName = correctSpecies;
-    } else if (verdict === 'UNSURE') {
-      identifiedSpeciesName = 'Unsure';
     }
 
     const { error } = await supabase
@@ -512,17 +510,6 @@ export default function ReviewDetail() {
                   <div className="text-sm font-bold">Correct</div>
                 </button>
                 <button
-                  onClick={() => setVerdict('UNSURE')}
-                  className={`py-4 px-3 rounded-xl border-2 text-sm font-medium transition-all transform hover:scale-105 ${
-                    verdict === 'UNSURE'
-                      ? 'bg-yellow-500 text-white border-yellow-500 shadow-lg scale-105'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-yellow-400'
-                  }`}
-                >
-                  <div className="text-3xl mb-2">❓</div>
-                  <div className="text-sm font-bold">Unsure</div>
-                </button>
-                <button
                   onClick={() => setVerdict('NOT_BUTTERFLY')}
                   className={`py-4 px-3 rounded-xl border-2 text-sm font-medium transition-all transform hover:scale-105 ${
                     verdict === 'NOT_BUTTERFLY'
@@ -540,7 +527,6 @@ export default function ReviewDetail() {
                 <p className="text-sm font-medium text-blue-900">
                   {verdict === 'AGREE' && '✅ You confirm the AI prediction is correct.'}
                   {verdict === 'CORRECT' && '✏️ You disagree with AI and will provide the correct species.'}
-                  {verdict === 'UNSURE' && '❓ You cannot confidently confirm or correct this identification.'}
                   {verdict === 'NOT_BUTTERFLY' && '🚫 This image does not contain a butterfly.'}
                 </p>
               </div>
@@ -682,7 +668,6 @@ export default function ReviewDetail() {
                   <span className="font-bold text-gray-900">
                     {verdict === 'AGREE' && '✅ Agree'}
                     {verdict === 'CORRECT' && '✏️ Correct'}
-                    {verdict === 'UNSURE' && '❓ Unsure'}
                     {verdict === 'NOT_BUTTERFLY' && '🚫 Not a Butterfly'}
                   </span>
                 </div>
