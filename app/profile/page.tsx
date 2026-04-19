@@ -60,6 +60,8 @@ export default function ProfilePage() {
         experience_years: formData.experience_years,
         bio: formData.bio,
         linkedin_url: formData.linkedin_url,
+        researchgate_url: formData.researchgate_url,
+        google_scholar_url: formData.google_scholar_url,
         updated_at: new Date().toISOString(),
       })
       .eq('id', user.id);
@@ -293,6 +295,24 @@ export default function ProfilePage() {
                   editMode={editMode}
                   onChange={(val: string) => handleChange('linkedin_url', val)}
                   placeholder="https://linkedin.com/in/yourprofile"
+                  icon="🔗"
+                />
+
+                <ProfileField
+                  label="ResearchGate URL"
+                  value={formData.researchgate_url || ''}
+                  editMode={editMode}
+                  onChange={(val: string) => handleChange('researchgate_url', val)}
+                  placeholder="https://researchgate.net/profile/yourprofile"
+                  icon="🔗"
+                />
+
+                <ProfileField
+                  label="Google Scholar URL"
+                  value={formData.google_scholar_url || ''}
+                  editMode={editMode}
+                  onChange={(val: string) => handleChange('google_scholar_url', val)}
+                  placeholder="https://scholar.google.com/citations?user=yourprofile"
                   icon="🔗"
                 />
 
