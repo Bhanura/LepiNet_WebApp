@@ -143,15 +143,23 @@ export default function ReviewDetail() {
     // Calculate agreed_with_ai based on verdict
     const agreedWithAI = verdict === 'AGREE';
 
-    // Get identified_species_name
-    let identifiedSpeciesName: string = '';
+    // Get identified_species_id
+    let identifiedSpeciesId: string | null = null;
 
     if (verdict === 'NOT_BUTTERFLY') {
-      identifiedSpeciesName = 'Not a Butterfly';
+      identifiedSpeciesId = 'not-a-butterfly';
     } else if (verdict === 'AGREE') {
-      identifiedSpeciesName = predictedSpecies?.common_name_english || log.predicted_species_name;
+      identifiedSpeciesId = log.predicted_id;
     } else if (verdict === 'CORRECT' && correctSpecies) {
-      identifiedSpeciesName = correctSpecies;
+      const species = speciesList.find(s => s.common_name_english === correctSpecies);
+      if (species) {
+        identifiedSpeciesId = species.butterfly_id;
+      } else {
+        console.error("Could not find the selected species in the list.");
+        alert("An error occurred: The selected species is invalid.");
+        setSubmitting(false);
+        return;
+      }
     }
 
     const { error } = await supabase
@@ -161,7 +169,7 @@ export default function ReviewDetail() {
         reviewer_id: user.id,
         verdict: verdict,
         agreed_with_ai: agreedWithAI,
-        identified_species_name: identifiedSpeciesName,
+        identified_species_id: identifiedSpeciesId,
         image_quality_rating: imageQualityRating,
         wings_visible: wingsVisible,
         body_visible: bodyVisible,
