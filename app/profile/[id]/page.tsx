@@ -142,6 +142,45 @@ export default function ProfileView() {
               </div>
             )}
 
+            {/* Social Links */}
+            {(profile.linkedin_url || profile.researchgate_url || profile.google_scholar_url) && (
+              <div className="mb-6">
+                <p className="text-sm text-gray-500 mb-2">Professional Profiles</p>
+                <div className="flex flex-col gap-2">
+                  {profile.linkedin_url && (
+                    <a
+                      href={profile.linkedin_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      LinkedIn
+                    </a>
+                  )}
+                  {profile.researchgate_url && (
+                    <a
+                      href={profile.researchgate_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      ResearchGate
+                    </a>
+                  )}
+                  {profile.google_scholar_url && (
+                    <a
+                      href={profile.google_scholar_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:underline"
+                    >
+                      Google Scholar
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* LinkedIn */}
             {profile.linkedin_url && (
               <div>
