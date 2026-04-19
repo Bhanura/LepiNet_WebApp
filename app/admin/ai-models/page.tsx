@@ -32,6 +32,14 @@ export default function AIControlPage() {
   // Show/Hide Admin Guide
   const [showGuide, setShowGuide] = useState(false);
 
+  // Confirmation Modal States
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [modalAction, setModalAction] = useState<'activate' | 'delete' | null>(null);
+  const [modelToModify, setModelToModify] = useState<ModelVersion | null>(null);
+  const [modalPassword, setModalPassword] = useState('');
+  const [modalError, setModalError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
@@ -104,6 +112,49 @@ export default function AIControlPage() {
       setTrainMessage({ text: "Network error. AI Server might be offline.", type: 'error' });
     }
     setIsTraining(false);
+  };
+
+  const handleOpenConfirmModal = (model: ModelVersion, action: 'activate' | 'delete') => {
+    if (action === 'delete' && model.is_active) {
+      alert("Error: Cannot delete the currently active model. Please switch to another model first.");
+      return;
+    }
+    setModelToModify(model);
+    setModalAction(action);
+    setShowConfirmModal(true);
+    setModalError(null);
+    setModalPassword('');
+  };
+
+  const handleConfirmAction = async () => {
+    if (!modalPassword) return setModalError("Admin Secret is required.");
+    if (!modelToModify || !modalAction) return;
+
+    setIsSubmitting(true);
+    setModalError(null);
+
+    const endpoint = modalAction === 'activate' ? '/set-active-model' : '/delete-model';
+    const method = modalAction === 'activate' ? 'POST' : 'DELETE';
+
+    try {
+      const response = await fetch(`https://bhanura-lepinet-backend.hf.space${endpoint}`, {
+        method: method,
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${modalPassword}` },
+        body: JSON.stringify({ version_name: modelToModify.version_name, file_path: modelToModify.file_path })
+      });
+
+      if (response.ok) {
+        alert(`Success! Model version ${modelToModify.version_name} has been ${modalAction === 'activate' ? 'activated' : 'deleted'}. Page will now refresh.`);
+        setShowConfirmModal(false);
+        fetchData(); // Refresh data to show changes
+      } else {
+        const err = await response.json();
+        setModalError(err.detail || err.error || "An unknown error occurred.");
+      }
+    } catch (error) {
+      setModalError("Network error. Could not connect to the AI server.");
+    }
+    setIsSubmitting(false);
   };
 
   if (loading) return <div className="flex justify-center items-center min-h-screen"><div className="text-gray-500">Loading AI Control Center...</div></div>;
@@ -254,7 +305,29 @@ export default function AIControlPage() {
                     <td className="px-6 py-4 text-center text-gray-600">{model.training_image_count || 0}</td>
                     <td className="px-6 py-4 text-center"><span className="bg-blue-50 text-blue-700 font-semibold px-2.5 py-1 rounded-full">{model.accuracy_score ? `${model.accuracy_score.toFixed(1)}%` : 'N/A'}</span></td>
                     <td className="px-6 py-4 text-center">{model.is_active ? <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">ACTIVE</span> : <span className="bg-gray-100 text-gray-500 text-xs font-bold px-3 py-1 rounded-full">INACTIVE</span>}</td>
-                    <td className="px-6 py-4 text-right">{model.evaluation ? <button onClick={() => setSelectedModel(model)} className="text-blue-600 hover:text-blue-800 font-medium hover:underline">View Details</button> : <span className="text-gray-400 text-xs">No Data</span>}</td>
+                    <td className="px-6 py-4 text-right space-x-2 whitespace-nowrap">
+                      <button 
+                        onClick={() => setSelectedModel(model)} 
+                        className="text-blue-600 hover:text-blue-800 font-medium hover:underline disabled:text-gray-400 disabled:no-underline"
+                        disabled={!model.evaluation}
+                      >
+                        Details
+                      </button>
+                      <button 
+                        onClick={() => handleOpenConfirmModal(model, 'activate')}
+                        className="font-medium text-green-600 hover:text-green-800 disabled:text-gray-400 disabled:no-underline"
+                        disabled={model.is_active}
+                      >
+                        Set Active
+                      </button>
+                      <button 
+                        onClick={() => handleOpenConfirmModal(model, 'delete')}
+                        className="font-medium text-red-600 hover:text-red-800 disabled:text-gray-400 disabled:no-underline"
+                        disabled={model.is_active}
+                      >
+                        Delete
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -298,6 +371,44 @@ export default function AIControlPage() {
                 <p className="text-xs text-gray-500 text-center mt-2">💡 Click on image to view fullscreen</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && modelToModify && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <h3 className="text-xl font-bold text-gray-900">Confirm Action</h3>
+            <p className="text-gray-600 mt-2">
+              Are you sure you want to <strong className={modalAction === 'delete' ? 'text-red-600' : 'text-green-600'}>{modalAction}</strong> the model version <strong className="text-gray-800">{modelToModify.version_name}</strong>?
+              {modalAction === 'delete' && <span className="block font-bold text-red-700 mt-1">This action is irreversible.</span>}
+            </p>
+            
+            <div className="mt-6">
+              <label className="block text-sm font-bold text-gray-600 mb-2">Enter Admin Secret to Confirm</label>
+              <input
+                type="password"
+                value={modalPassword}
+                onChange={(e) => setModalPassword(e.target.value)}
+                className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500"
+                placeholder="Admin Secret Password"
+              />
+              {modalError && <p className="text-red-500 text-sm mt-2">{modalError}</p>}
+            </div>
+
+            <div className="flex justify-end gap-4 mt-6">
+              <button onClick={() => setShowConfirmModal(false)} className="px-4 py-2 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium">
+                Cancel
+              </button>
+              <button 
+                onClick={handleConfirmAction} 
+                disabled={isSubmitting}
+                className={`px-4 py-2 rounded-lg text-white font-bold ${modalAction === 'delete' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'} disabled:bg-gray-400`}
+              >
+                {isSubmitting ? 'Processing...' : `Yes, ${modalAction}`}
+              </button>
+            </div>
           </div>
         </div>
       )}
