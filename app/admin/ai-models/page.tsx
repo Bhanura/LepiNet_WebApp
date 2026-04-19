@@ -24,6 +24,7 @@ export default function AIControlPage() {
   const [epochs, setEpochs] = useState(5);
   const [lr, setLr] = useState(0.0001); // Default learning rate එක ආරක්ෂිත අගයකට වෙනස් කළා
   const [batchSize, setBatchSize] = useState(16);
+  const [testSize, setTestSize] = useState(0.2); // Validation split size
   const [adminSecret, setAdminSecret] = useState('');
   const [isTraining, setIsTraining] = useState(false);
   const [trainMessage, setTrainMessage] = useState<{text: string, type: 'success'|'error'|'info'} | null>(null);
@@ -89,7 +90,7 @@ export default function AIControlPage() {
       const response = await fetch("https://bhanura-lepinet-backend.hf.space/trigger-training", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${adminSecret}` },
-        body: JSON.stringify({ epochs, learning_rate: lr, batch_size: batchSize })
+        body: JSON.stringify({ epochs, learning_rate: lr, batch_size: batchSize, test_size: testSize })
       });
 
       if (response.ok) {
@@ -170,6 +171,7 @@ export default function AIControlPage() {
                 <li><strong className="text-yellow-900">Epochs (Default: 5):</strong> How many times the AI sees the entire dataset. <em>Warning:</em> High values (e.g., &gt;15) can cause "Overfitting" (memorizing instead of learning).</li>
                 <li><strong className="text-yellow-900">Learning Rate (Default: 0.0001):</strong> How fast the AI updates its memory. <em>Warning:</em> Very sensitive! A large value (e.g., 0.01) will cause "Catastrophic Forgetting" wiping out previous butterfly knowledge. Keep this very small.</li>
                 <li><strong className="text-yellow-900">Batch Size (Default: 16):</strong> Number of images processed at once. Depends on server memory.</li>
+                <li><strong className="text-yellow-900">Validation Split (Default: 20%):</strong> Percentage of new data used for validation, not training. Helps check if the model is truly learning.</li>
               </ul>
               <p className="text-xs font-semibold text-red-600 bg-red-50 p-2 rounded border border-red-100">
                 🛑 DO NOT change these values unless you have a basic understanding of Machine Learning concepts. Default values are highly recommended for continuous updates.
@@ -177,7 +179,7 @@ export default function AIControlPage() {
             </div>
           )}
           
-          <div className="grid grid-cols-3 gap-6 mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
+          <div className="grid grid-cols-3 gap-6 mb-4">
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Epochs</label>
               <input type="number" value={epochs} onChange={e => setEpochs(Number(e.target.value))} className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500" />
@@ -192,7 +194,28 @@ export default function AIControlPage() {
             </div>
           </div>
 
-          <div className="mt-auto pt-4 border-t border-gray-100">
+          {/* Validation Split Slider */}
+          <div className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
+            <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">
+              Validation Split Size: <span className="text-purple-600 font-black">{Math.round(testSize * 100)}%</span>
+            </label>
+            <input
+              type="range"
+              min="0.05"
+              max="0.5"
+              step="0.01"
+              value={testSize}
+              onChange={(e) => setTestSize(parseFloat(e.target.value))}
+              className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
+            />
+            <div className="flex justify-between text-xs text-gray-500 mt-1">
+              <span>5%</span>
+              <span>27%</span>
+              <span>50%</span>
+            </div>
+          </div>
+
+          <div className="mt-auto pt-4 border-t border-gray-200">
             <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Admin Authorization</label>
             <div className="flex gap-4">
               <input type="password" placeholder="Enter Admin Secret..." value={adminSecret} onChange={e => setAdminSecret(e.target.value)} className="flex-1 border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500" />
