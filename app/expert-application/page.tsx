@@ -27,6 +27,8 @@ export default function ExpertApplication() {
       experience_years: formData.get('experience'),
       bio: formData.get('bio'),
       linkedin_url: formData.get('linkedin'),
+      researchgate_url: formData.get('researchgate'),
+      google_scholar_url: formData.get('googlescholar'),
       verification_status: 'pending'
     };
 
@@ -70,8 +72,18 @@ export default function ExpertApplication() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium mb-1 text-gray-700">LinkedIn / ResearchGate URL</label>
-              <input name="linkedin" className="w-full border border-gray-300 p-2 rounded focus:ring-[#134a86] focus:border-[#134a86]" placeholder="https://..." />
+              <label className="block text-sm font-medium mb-1 text-gray-700">LinkedIn Profile URL</label>
+              <input name="linkedin" className="w-full border border-gray-300 p-2 rounded focus:ring-[#134a86] focus:border-[#134a86]" placeholder="https://linkedin.com/in/..." />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">ResearchGate Profile URL</label>
+              <input name="researchgate" className="w-full border border-gray-300 p-2 rounded focus:ring-[#134a86] focus:border-[#134a86]" placeholder="https://researchgate.net/profile/..." />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">Google Scholar Profile URL</label>
+              <input name="googlescholar" className="w-full border border-gray-300 p-2 rounded focus:ring-[#134a86] focus:border-[#134a86]" placeholder="https://scholar.google.com/citations?user=..." />
             </div>
 
             <div>

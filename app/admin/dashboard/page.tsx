@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 // Types
 type UserProfile = {
@@ -15,7 +16,15 @@ type UserProfile = {
   experience_years?: string;
   bio?: string;
   linkedin_url?: string;
+  researchgate_url?: string;
+  google_scholar_url?: string;
   created_at: string;
+  stats?: UserStats;
+};
+
+type UserStats = {
+  submissions: number;
+  images: number;
 };
 
 type DashboardStats = {
@@ -108,14 +117,42 @@ export default function AdminDashboard() {
     const [
       { data: allRecords },
       { data: allReviews },
-      { data: allUsers }
+      { data: allUsersData, error: usersError },
+      { data: submissionsData, error: submissionsError },
+      { data: aiLogsData, error: aiLogsError }
     ] = await Promise.all([
       supabase.from('ai_logs').select('id'),
       supabase.from('expert_reviews').select('ai_log_id'),
-      supabase.from('users').select('*').order('created_at', { ascending: false })
+      supabase.from('users').select('*').order('created_at', { ascending: false }),
+      supabase.from('submissions').select('user_id'),
+      supabase.from('ai_logs').select('user_id')
     ]);
 
-    if (allUsers) {
+    if (usersError || submissionsError || aiLogsError) {
+      setLoading(false);
+      alert('Error fetching user data');
+      return;
+    }
+
+    if (allUsersData) {
+      const submissionsCount = submissionsData.reduce((acc, sub) => {
+        acc[sub.user_id] = (acc[sub.user_id] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const imagesCount = aiLogsData.reduce((acc, log) => {
+        acc[log.user_id] = (acc[log.user_id] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const allUsers = allUsersData.map(user => ({
+        ...user,
+        stats: {
+          submissions: submissionsCount[user.id] || 0,
+          images: imagesCount[user.id] || 0,
+        }
+      }));
+
       setUsers(allUsers as UserProfile[]);
       setFilteredUsers(allUsers as UserProfile[]);
       
@@ -321,7 +358,9 @@ export default function AdminDashboard() {
                 <div key={app.id} className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-6">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <h3 className="text-xl font-bold">{app.first_name} {app.last_name}</h3>
+                      <Link href={`/profile/${app.id}`} className="text-xl font-bold hover:underline">
+                        <h3 className="text-xl font-bold">{app.first_name} {app.last_name}</h3>
+                      </Link>
                       {app.profession && (
                         <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">{app.profession}</span>
                       )}
@@ -333,11 +372,27 @@ export default function AdminDashboard() {
                         <p className="text-sm text-gray-600">{app.bio}</p>
                       </div>
                     )}
-                    <div className="flex gap-4 text-sm text-gray-500">
+                    <div className="flex gap-4 text-sm text-gray-500 mb-4">
                       {app.experience_years && <span>Experience: {app.experience_years} years</span>}
+                    </div>
+                    <div className="flex gap-4 text-sm">
+                        <p>Submissions: {app.stats?.submissions}</p>
+                        <p>Images: {app.stats?.images}</p>
+                    </div>
+                    <div className="flex gap-4 text-sm text-gray-500 mt-4">
                       {app.linkedin_url && (
                         <a href={app.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
                           LinkedIn Profile →
+                        </a>
+                      )}
+                      {app.researchgate_url && (
+                        <a href={app.researchgate_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          ResearchGate Profile →
+                        </a>
+                      )}
+                      {app.google_scholar_url && (
+                        <a href={app.google_scholar_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                          Google Scholar Profile →
                         </a>
                       )}
                     </div>
