@@ -4,12 +4,82 @@ import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+// ── Validation helpers ──────────────────────────────────────────────────────
+const PHONE_REGEX = /^\+?[0-9\s\-()]{7,20}$/;
+const NAME_REGEX = /^[A-Za-z\s'\-]+$/;
+const URL_VALIDATORS: Record<string, { prefixes: string[]; label: string }> = {
+  linkedin_url: {
+    prefixes: ['https://linkedin.com/', 'https://www.linkedin.com/'],
+    label: 'LinkedIn',
+  },
+  researchgate_url: {
+    prefixes: ['https://researchgate.net/', 'https://www.researchgate.net/'],
+    label: 'ResearchGate',
+  },
+  google_scholar_url: {
+    prefixes: ['https://scholar.google.com/', 'https://www.scholar.google.com/'],
+    label: 'Google Scholar',
+  },
+};
+
+function validateProfileForm(data: any): string[] {
+  const errs: string[] = [];
+
+  // Required names
+  if (!data.first_name?.trim() || data.first_name.trim().length < 2)
+    errs.push('First Name must be at least 2 characters.');
+  else if (!NAME_REGEX.test(data.first_name.trim()))
+    errs.push('First Name can only contain letters, spaces, hyphens, or apostrophes.');
+
+  if (!data.last_name?.trim() || data.last_name.trim().length < 2)
+    errs.push('Last Name must be at least 2 characters.');
+  else if (!NAME_REGEX.test(data.last_name.trim()))
+    errs.push('Last Name can only contain letters, spaces, hyphens, or apostrophes.');
+
+  // Phone (optional — validate only if provided)
+  if (data.mobile?.trim() && !PHONE_REGEX.test(data.mobile.trim()))
+    errs.push('Mobile number format is invalid (e.g. +94 77 123 4567).');
+
+  // Birthday — must not be in the future or more than 120 years ago
+  if (data.birthday) {
+    const dob = new Date(data.birthday);
+    const now = new Date();
+    const minDate = new Date();
+    minDate.setFullYear(now.getFullYear() - 120);
+    if (dob > now)
+      errs.push('Birthday cannot be a future date.');
+    else if (dob < minDate)
+      errs.push('Birthday seems too far in the past (over 120 years ago).');
+  }
+
+  // Experience years (optional — validate if provided)
+  if (data.experience_years !== undefined && data.experience_years !== null && data.experience_years !== '') {
+    const exp = Number(data.experience_years);
+    if (isNaN(exp) || !Number.isInteger(exp) || exp < 0 || exp > 80)
+      errs.push('Years of Experience must be a whole number between 0 and 80.');
+  }
+
+  // URL prefix validation (only when a value is provided)
+  for (const [field, { prefixes, label }] of Object.entries(URL_VALIDATORS)) {
+    if (data[field]?.trim() && !prefixes.some((p: string) => data[field].trim().startsWith(p)))
+      errs.push(`${label} URL must be a valid profile link (e.g. ${prefixes[0]}in/yourname).`);
+  }
+
+  // Bio max length
+  if (data.bio && data.bio.length > 1000)
+    errs.push('Bio must be under 1000 characters.');
+
+  return errs;
+}
+// ────────────────────────────────────────────────────────────────────────────
+
 export default function ProfilePage() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [formData, setFormData] = useState<any>({});
+  const [saveErrors, setSaveErrors] = useState<string[]>([]);
   const router = useRouter();
 
   const supabase = createBrowserClient(
@@ -42,34 +112,46 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
+    // Run validation before touching the DB
+    const validationErrors = validateProfileForm(formData);
+    if (validationErrors.length > 0) {
+      setSaveErrors(validationErrors);
+      return;
+    }
+    setSaveErrors([]);
     setSaving(true);
+
     const { data: { user } } = await supabase.auth.getUser();
-    
     if (!user) return;
+
+    // Sanitise experience_years — store as number or null
+    const expYears =
+      formData.experience_years !== '' && formData.experience_years !== null && formData.experience_years !== undefined
+        ? Number(formData.experience_years)
+        : null;
 
     const { error } = await supabase
       .from('users')
       .update({
-        first_name: formData.first_name,
-        last_name: formData.last_name,
-        mobile: formData.mobile,
-        birthday: formData.birthday,
-        gender: formData.gender,
-        educational_level: formData.educational_level,
-        profession: formData.profession,
-        experience_years: formData.experience_years,
-        bio: formData.bio,
-        linkedin_url: formData.linkedin_url,
-        researchgate_url: formData.researchgate_url,
-        google_scholar_url: formData.google_scholar_url,
+        first_name: formData.first_name?.trim(),
+        last_name: formData.last_name?.trim(),
+        mobile: formData.mobile?.trim() || null,
+        birthday: formData.birthday || null,
+        gender: formData.gender || null,
+        educational_level: formData.educational_level?.trim() || null,
+        profession: formData.profession?.trim() || null,
+        experience_years: expYears,
+        bio: formData.bio?.trim() || null,
+        linkedin_url: formData.linkedin_url?.trim() || null,
+        researchgate_url: formData.researchgate_url?.trim() || null,
+        google_scholar_url: formData.google_scholar_url?.trim() || null,
         updated_at: new Date().toISOString(),
       })
       .eq('id', user.id);
 
     if (error) {
-      alert('Error updating profile: ' + error.message);
+      setSaveErrors(['Failed to update profile: ' + error.message]);
     } else {
-      alert('Profile updated successfully!');
       setProfile(formData);
       setEditMode(false);
     }
@@ -170,7 +252,7 @@ export default function ProfilePage() {
               {/* Edit Button */}
               {!editMode ? (
                 <button
-                  onClick={() => setEditMode(true)}
+                  onClick={() => { setEditMode(true); setSaveErrors([]); }}
                   className="px-6 py-3 bg-white text-blue-600 rounded-lg font-semibold hover:bg-blue-50 transition shadow-lg"
                 >
                   ✏️ Edit Profile
@@ -188,6 +270,7 @@ export default function ProfilePage() {
                     onClick={() => {
                       setEditMode(false);
                       setFormData(profile);
+                      setSaveErrors([]);
                     }}
                     className="px-4 py-3 bg-white/20 backdrop-blur-sm text-white rounded-lg font-semibold hover:bg-white/30 transition"
                   >
@@ -200,6 +283,17 @@ export default function ProfilePage() {
 
           {/* Profile Details */}
           <div className="p-8">
+            {/* Validation errors banner */}
+            {saveErrors.length > 0 && (
+              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-sm font-bold text-red-800 mb-2">⚠ Please fix the following before saving:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  {saveErrors.map((err, i) => (
+                    <li key={i} className="text-sm text-red-700">{err}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Personal Information */}
               <div className="space-y-6">
@@ -235,8 +329,9 @@ export default function ProfilePage() {
                   value={formData.mobile || ''}
                   editMode={editMode}
                   onChange={(val: string) => handleChange('mobile', val)}
-                  placeholder="+94 XX XXX XXXX"
+                  placeholder="+94 77 123 4567"
                   icon="📱"
+                  hint="Format: +94 77 123 4567"
                 />
 
                 <ProfileField
@@ -246,6 +341,7 @@ export default function ProfilePage() {
                   onChange={(val: string) => handleChange('birthday', val)}
                   type="date"
                   icon="🎂"
+                  maxDate={new Date().toISOString().split('T')[0]}
                 />
 
                 <ProfileField
@@ -283,10 +379,13 @@ export default function ProfilePage() {
 
                 <ProfileField
                   label="Years of Experience"
-                  value={formData.experience_years || ''}
+                  value={formData.experience_years ?? ''}
                   editMode={editMode}
                   onChange={(val: string) => handleChange('experience_years', val)}
                   icon="📅"
+                  type="number"
+                  min={0}
+                  max={80}
                 />
 
                 <ProfileField
@@ -378,7 +477,11 @@ function ProfileField({
   options = [], 
   placeholder = '',
   icon = '',
-  required = false
+  required = false,
+  hint = '',
+  maxDate = '',
+  min,
+  max,
 }: any) {
   return (
     <div>
@@ -403,6 +506,9 @@ function ProfileField({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={placeholder}
+            max={maxDate || (type === 'number' ? max : undefined)}
+            min={type === 'number' ? min : undefined}
+            step={type === 'number' ? 1 : undefined}
             className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
           />
         )
@@ -411,6 +517,9 @@ function ProfileField({
           {icon && <span>{icon}</span>}
           <span>{value || 'Not provided'}</span>
         </p>
+      )}
+      {editMode && hint && (
+        <p className="text-xs text-gray-500 mt-1">{hint}</p>
       )}
     </div>
   );

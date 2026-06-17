@@ -233,15 +233,18 @@ export default function AIControlPage() {
           <div className="grid grid-cols-3 gap-6 mb-4">
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Epochs</label>
-              <input type="number" value={epochs} onChange={e => setEpochs(Number(e.target.value))} className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500" />
+              <input type="number" value={epochs} min={1} max={50} step={1} onChange={e => setEpochs(Number(e.target.value))} className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500" />
+              <p className="text-xs text-gray-400 mt-1">Range: 1–50</p>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Learning Rate</label>
-              <input type="number" step="0.00001" value={lr} onChange={e => setLr(Number(e.target.value))} className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500" />
+              <input type="number" step="0.00001" min={0.00001} max={0.01} value={lr} onChange={e => setLr(Number(e.target.value))} className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500" />
+              <p className="text-xs text-gray-400 mt-1">Range: 0.00001–0.01</p>
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-600 uppercase tracking-wider mb-2">Batch Size</label>
-              <input type="number" value={batchSize} onChange={e => setBatchSize(Number(e.target.value))} className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500" />
+              <input type="number" value={batchSize} min={1} max={128} step={1} onChange={e => setBatchSize(Number(e.target.value))} className="w-full border-gray-300 rounded-lg shadow-sm focus:ring-purple-500 focus:border-purple-500" />
+              <p className="text-xs text-gray-400 mt-1">Range: 1–128</p>
             </div>
           </div>
 
